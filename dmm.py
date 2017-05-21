@@ -63,11 +63,14 @@ class DMMK:
         # substruct the chemical potential
         self.H -= self.mu * self.identity
 
-        # Save the scaled Hamiltonian for propagation
-        self.scaledH = -0.5 * self.dbeta * self.H
-
         # Set the initial condition for the matrix
         self.rho = 0.5 * self.identity.todense()
+
+        # Allocate the memory for
+        self.tmp = np.empty_like(self.rho)
+
+        # Save the scaled Hamiltonian for propagation
+        self.scaledH = -0.5 * self.dbeta * self.H
 
     def propagate(self, nsteps=1):
         """
@@ -88,12 +91,20 @@ class DMMK:
             #
             ###########################################################################
 
-            # Construct the maps
-            # K = self.identity - 0.5 * self.dbeta * self.H.dot(self.identity - self.rho)
+            # Construct the map K
+            # Optimized version of
+            #   K = self.identity - 0.5 * self.dbeta * self.H.dot(self.identity - self.rho)
+
             K = self.scaledH.dot(self.identity - self.rho)
             K += self.identity
 
-            self.rho = K.dot(self.rho).dot(K.conj().T)
+            assert not sparse.issparse(K), "K matrix must not be sparse"
+
+            # Optimized version of
+            #   self.rho = K.dot(self.rho).dot(K.conj().T)
+
+            np.dot(K, self.rho, out=self.tmp)
+            np.dot(self.tmp, K.conj().T, out=self.rho)
 
             self.beta += self.dbeta
 
@@ -139,7 +150,7 @@ if __name__ == '__main__':
         dbeta=0.003,
         mu=-0.9,
         # randomly initialize Hamiltonian (symmetrization will take place in the constructor)
-        H=sparse.random(60, 60, density=0.1),
+        H=sparse.random(70, 70, density=0.1),
         #H=np.random.normal(size=(40,40)) + 1j * np.random.normal(size=(40,40)),
         #np.random.rand(40, 40) + 1j * np.random.rand(40, 40)
     )
