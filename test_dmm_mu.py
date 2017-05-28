@@ -1,8 +1,9 @@
 ################################################################
 #
 #   This file implements propagator with respect
-#   to the chemical potential ($\mu$). As we can see
-#   this propagation is unstable for many $\mu$ propagation
+#   to the chemical potential ($\mu$).
+#   For a better stability of the propagation, use
+#   the negative step size in the chemical potential
 #
 ################################################################
 
@@ -20,9 +21,9 @@ qsys = CentralDiffQHamiltonian(
 )
 
 dmm = DMM(
-    mu=-10.,
+    mu=-7.,
     dbeta=0.001,
-    dmu=0.0005,
+    dmu=-0.001,
     H=qsys.Hamiltonian,
 )
 
@@ -36,7 +37,8 @@ F = lambda obj: (
 )
 
 mu, average_H, exact_average_H = zip(
-    *[F(dmm.propagate_mu(nsteps=100)) for _ in range(110)]
+    #*[F(dmm.propagate_mu().propagate_beta()) for _ in range(11000)]
+    *[F(dmm.propagate_mu(nsteps=100)) for _ in range(100)]
 )
 
 plt.plot(mu, average_H, label='$\langle \hat{H} \\rangle$')
