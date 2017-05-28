@@ -8,7 +8,7 @@
 #
 ##########################################################
 
-from dmm import DMMK, np, linalg
+from dmm import DMM, np, linalg
 #from QuantumClassicalDynamics.mub_qhamiltonian import MUBQHamiltonian
 from QuantumClassicalDynamics.central_diff_qhamiltonian import CentralDiffQHamiltonian
 import matplotlib.pyplot as plt
@@ -21,12 +21,12 @@ qsys = CentralDiffQHamiltonian(
     V="15. * (exp(-X / 2.) -2. * exp(-X / 4.))",
 )
 
-dmm = DMMK(
+dmm = DMM(
     mu=1.05 * qsys.get_energy(2),
     dbeta=0.001,
     H=qsys.Hamiltonian,
 )
-dmm.propagate(10000)
+dmm.propagate_beta(10000)
 
 
 plt.subplot(121)
@@ -35,7 +35,7 @@ p_dmm = linalg.eigvalsh(dmm.rho)[::-1]
 
 plt.plot(dmm.E, p_dmm, '*-', label="DMM")
 plt.plot(dmm.E, dmm.get_exact_pop(), '*-', label='TF')
-plt.xlim([dmm.E.min(), dmm.E[5]])
+plt.xlim([dmm.E[0], dmm.E[5]])
 plt.xlabel('Energy')
 plt.legend()
 
