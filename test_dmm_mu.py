@@ -27,7 +27,7 @@ dmm = DMM(
     H=qsys.Hamiltonian,
 )
 
-dmm.propagate_beta(5000, commnorm=True)
+dmm.propagate_beta2(5000, commnorm=True)
 
 # Function for post processing
 F = lambda obj: (
@@ -38,7 +38,7 @@ F = lambda obj: (
 
 mu, average_H, exact_average_H = zip(
     #*[F(dmm.propagate_mu().propagate_beta()) for _ in range(11000)]
-    *[F(dmm.propagate_mu(nsteps=100)) for _ in range(100)]
+    *[F(dmm.propagate_mu1(nsteps=100)) for _ in range(100)]
 )
 
 plt.plot(mu, average_H, label='$\langle \hat{H} \\rangle$')

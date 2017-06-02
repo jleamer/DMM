@@ -63,8 +63,9 @@ class DMM:
         # Set the initial condition for the matrix
         self.rho = 0.5 * self.identity.toarray()
 
-    def propagate_beta(self, nsteps=1, commnorm=False):
+    def propagate_beta1(self, nsteps=1, commnorm=False):
         """
+        The first order propagation in the inverse temperature
         :param nsteps: number of steps in the inverse temperature to take
         :param commnorm: boolean flag to print the norm of the commutator between the density matrix and hamiltonian
         :return: self
@@ -72,9 +73,6 @@ class DMM:
         # Save the scaled Hamiltonian for propagation
         scaledH = self.H - self.mu * self.identity
         scaledH *= -0.5 * self.dbeta
-
-        # Allocate the memory for
-        tmp = np.empty_like(self.rho)
 
         for _ in range(nsteps):
             ###########################################################################
@@ -86,7 +84,7 @@ class DMM:
             #
             #   where
             #
-            #       K = 1 - 0.5 * dbeta * H * (1 - rho(beta))
+            #       K = 1 - 0.5 * dbeta * (H - mu) * (1 - rho(beta))
             #
             ###########################################################################
 
@@ -98,12 +96,7 @@ class DMM:
             K += self.identity
 
             # assert not sparse.issparse(K), "K matrix must not be sparse"
-
-            # Optimized version of
             self.rho = K.dot(self.rho).dot(K.conj().T)
-
-            # np.dot(K, self.rho, out=tmp)
-            # np.dot(tmp, K.conj().T, out=self.rho)
 
             self.beta += self.dbeta
 
@@ -118,9 +111,55 @@ class DMM:
 
         return self
 
-    def propagate_mu(self, nsteps=1):
+    def propagate_beta2(self, nsteps=1, commnorm=False):
         """
-        Propagate along the chemical potential
+        The second order propagation in the inverse temperature
+        :param nsteps: number of steps in the inverse temperature to take
+        :param commnorm: boolean flag to print the norm of the commutator between the density matrix and hamiltonian
+        :return: self
+        """
+        # Save the scaled Hamiltonian for propagation
+        scaledH = self.H - self.mu * self.identity
+        scaledH *= -0.5 * self.dbeta
+
+        for _ in range(nsteps):
+            ###########################################################################
+            #
+            #   The method is
+            #
+            #       rho(beta + dbeta) = K rho(beta) K^{\dagger} + A rho(beta) A^{\dagger}
+            #       rho(beta = 0) = 1/2
+            #
+            #   where
+            #       A = -0.5 * dbeta * (H - mu) * (1 - rho(beta))
+            #       K = 1 + A * (1 + A + 0.5 * dbeta * (H - mu))
+            #
+            ###########################################################################
+
+            # Construct A and K
+            A = scaledH.dot(self.identity - self.rho)
+
+            K = A.dot(self.identity + A - scaledH)
+            K += self.identity
+
+            self.rho = K.dot(self.rho).dot(K.conj().T) + A.dot(self.rho).dot(A.conj().T)
+
+            self.beta += self.dbeta
+
+        if commnorm:
+            # Convert a sparce Hamiltonian to a dense matrix
+            H = (self.H.toarray() if sparse.issparse(self.H) else self.H)
+
+            print(
+                "\nThe norm of the commutator of the obtained density matrix and the Hamiltonian: %.2e\n\n"
+                % linalg.norm(self.rho.dot(H) - H.dot(self.rho))
+            )
+
+        return self
+
+    def propagate_mu1(self, nsteps=1):
+        """
+        The first order propagate along the chemical potential
         :param nsteps: number of steps to be taken in the chemical potential   
         :return: self
         """
@@ -129,7 +168,7 @@ class DMM:
             #
             #   The method is
             #
-            #       rho(mu + dmu) = K rho(mu) K
+            #       rho(mu + dmu) = K rho(mu) K^{\dagger}
             #
             #   where
             #
@@ -142,7 +181,41 @@ class DMM:
             K *= 0.5 * self.dmu * self.beta
             K += self.identity
 
-            self.rho = K.dot(self.rho).dot(K)
+            self.rho = K.dot(self.rho).dot(K.conj().T)
+
+            self.mu += self.dmu
+
+        return self
+
+    def propagate_mu2(self, nsteps=1):
+        """
+        The second order propagate along the chemical potential
+        :param nsteps: number of steps to be taken in the chemical potential
+        :return: self
+        """
+        for _ in range(nsteps):
+            ###########################################################################
+            #
+            #   The method is
+            #
+            #       rho(mu + dmu) = K rho(mu) K^{\dagger} + A rho(mu) A^{\dagger}
+            #
+            #   where
+            #
+            #       A = 0.5 * dmu * beta * (1 - rho(mu))
+            #
+            #       K = 1 + A * (1 + A - 0.5 * dmu * beta)
+            #
+            ###########################################################################
+
+            # Construct K
+            A = self.identity - self.rho
+            A *= 0.5 * self.dmu * self.beta
+
+            K = A.dot(self.identity + A - 0.5 * self.dmu * self.beta)
+            K += self.identity
+
+            self.rho = K.dot(self.rho).dot(K.conj().T) + A.dot(self.rho).dot(A.conj().T)
 
             self.mu += self.dmu
 
@@ -199,6 +272,8 @@ if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
 
+    np.random.seed(4936601)
+
     dmm = DMM(
         dbeta=0.003,
         dmu=0.0005,
@@ -210,7 +285,7 @@ if __name__ == '__main__':
     )
 
     # First propagate along the inverse temperature
-    dmm.propagate_beta(3000)
+    dmm.propagate_beta2(3000)
 
     plt.subplot(121)
     plt.title("Population at $\\beta = %.2f$, $\mu = %.2f$" % (dmm.beta, dmm.mu))
@@ -220,14 +295,15 @@ if __name__ == '__main__':
     plt.plot(dmm.E, p_dmm, '*-', label="DMM")
     plt.plot(dmm.E, linalg.eigvalsh(dmm.get_exact_DF())[::-1], '*-', label='exact via expm')
     plt.plot(dmm.E, dmm.get_exact_pop(), '*-', label='population')
-    #plt.plot(dmm.E, p_dmm - dmm.get_exact_pop())
+
+    print("Error norm between obtained and exact diagonalization: %.2e" % np.linalg.norm(p_dmm - dmm.get_exact_pop()))
 
     plt.legend()
     plt.xlabel('Energy')
     plt.ylabel('Population')
 
     # Second propagate along the chemical potential
-    dmm.propagate_mu(3000)
+    dmm.propagate_mu1(3000)
 
     plt.subplot(122)
     plt.title("Population at $\\beta = %.2f$, $\mu = %.2f$" % (dmm.beta, dmm.mu))
@@ -237,7 +313,8 @@ if __name__ == '__main__':
     plt.plot(dmm.E, p_dmm, '*-', label="DMM")
     plt.plot(dmm.E, linalg.eigvalsh(dmm.get_exact_DF())[::-1], '*-', label='exact via expm')
     plt.plot(dmm.E, dmm.get_exact_pop(), '*-', label='population')
-    #plt.plot(dmm.E, p_dmm - dmm.get_exact_pop())
+
+    print("Error norm between obtained and exact diagonalization: %.2e" % np.linalg.norm(p_dmm - dmm.get_exact_pop()))
 
     plt.legend()
     plt.xlabel('Energy')

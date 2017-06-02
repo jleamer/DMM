@@ -26,7 +26,7 @@ dmm = DMM(
     dbeta=0.001,
     H=qsys.Hamiltonian,
 )
-dmm.propagate_beta(10000)
+dmm.propagate_beta2(10000)
 
 
 plt.subplot(121)
