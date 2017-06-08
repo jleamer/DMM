@@ -21,6 +21,7 @@ qsys = CentralDiffQHamiltonian(
     V="15. * (exp(-X / 2.) -2. * exp(-X / 4.))",
 )
 
+# initialize the class for density matrix minimization
 dmm = DMM(
     mu=1.05 * qsys.get_energy(2),
     dbeta=0.001,
