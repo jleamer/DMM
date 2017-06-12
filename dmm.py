@@ -28,13 +28,13 @@ class DMM:
         # Check that all attributes were specified
         try:
             self.H
-        except ArithmeticError:
-            raise ArithmeticError("The Hamiltonian (H) was not specified")
+        except AttributeError:
+            raise AttributeError("The Hamiltonian (H) was not specified")
 
         try:
             self.dbeta
-        except ArithmeticError:
-            raise ArithmeticError("The inverse temperature increment (dbeta) was not specified")
+        except AttributeError:
+            raise AttributeError("The inverse temperature increment (dbeta) was not specified")
 
         try:
             self.mu

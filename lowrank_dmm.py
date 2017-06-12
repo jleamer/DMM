@@ -34,18 +34,18 @@ class LowRankDMM:
         # Check that all attributes were specified
         try:
             self.H
-        except ArithmeticError:
-            raise ArithmeticError("The Hamiltonian (H) was not specified")
+        except AttributeError:
+            raise AttributeError("The Hamiltonian (H) was not specified")
 
         try:
             self.M
         except AttributeError:
-            raise ArithmeticError("The rank (M) of the low-rank approximation of the density matrix R was not specified")
+            raise AttributeError("The rank (M) of the low-rank approximation of the density matrix R was not specified")
 
         try:
             self.dbeta
-        except ArithmeticError:
-            raise ArithmeticError("The inverse temperature increment (dbeta) was not specified")
+        except AttributeError:
+            raise AttributeError("The inverse temperature increment (dbeta) was not specified")
 
         try:
             self.mu
