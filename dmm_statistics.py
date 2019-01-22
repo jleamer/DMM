@@ -65,12 +65,25 @@ if __name__ == '__main__':
         #np.random.rand(40, 40) + 1j * np.random.rand(40, 40)
     )
     
+    dmm_list = np.empty(3, dtype=object)
+    for i in range(3):
+        dmm_list[i] = DMM(
+                dbeta=0.003,
+                dmu=0.0005,
+                mu=-0.9,
+                # randomly initialize Hamiltonian (symmetrization will take place in the constructor)
+                #H=sparse.random(70, 70, density=0.1),
+                H=np.random.normal(size=(40,40)) + 1j * np.random.normal(size=(40,40)),
+                #np.random.rand(40, 40) + 1j * np.random.rand(40, 40)
+                )
+        
+    
     ###########################################################################
     #
     #   Compare propagate methods
     #
     ###########################################################################         
-    
+    '''
     dmm1.propagate_beta1(numsteps)
     exact_dmm1 = dmm1.get_exact_pop()
     prop_dmm1 = linalg.eigvalsh(dmm1.rhocopy)[::-1]
@@ -98,7 +111,28 @@ if __name__ == '__main__':
     ax12.plot(dmm2.E, exact_dmm2, '*-', label='DMM2 exact')
     ax12.plot(dmm2.E, prop_dmm2, '*-', label='DMM2 prop')
     ax12.legend(numpoints = 1)
+    '''
+    exact_dmm = np.empty(3, dtype=object)
+    prop_dmm = np.empty(3, dtype=object)
     
+    for i in range(3):
+        dmm_list[i].propagate_beta1(numsteps)
+        prop_dmm[i] = linalg.eigvalsh(dmm_list[i].rhocopy)[::-1]
+        exact_dmm[i] = dmm_list[i].get_exact_pop()
+        
+    fig1 = plt.figure(1)
+    fig1.clf()
+    ax1 = fig1.add_subplot(111)
+    ax1.set_title("Population of DMM at $\\beta = %.2f$, $\mu = %.2f$" % (dmm_list[0].beta, dmm_list[0].mu))
+    ax1.set_xlabel('Population')
+    ax1.set_ylabel('Energy')
+    ax1.set_ylim([-0.2, 1.2])
+    for i in range(3):
+        ax1.plot(dmm_list[i].E, exact_dmm[i], '*-', label='Exact')
+        ax1.plot(dmm_list[i].E, prop_dmm[i], '*-', label='Prop')
+    ax1.legend(numpoints = 1)
+    
+    '''
     ###########################################################################
     #
     #   Compare RK4 methods
@@ -170,4 +204,4 @@ if __name__ == '__main__':
     
     print("Error norm b/w zvode and exact diagonalization for dmm2: %.2e" % np.linalg.norm(dmm2_zvode_eigvals - exact_dmm2))
     print("Error norm b/w zvode and exact diagonalization for dmm2: %.2e" % np.linalg.norm(prop_dmm2 - exact_dmm2))
-    
+    '''
