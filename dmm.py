@@ -63,7 +63,7 @@ class DMM:
 
         # Set the initial condition for the matrix
         self.rho = 0.5 * self.identity.toarray()
-        
+    
         self.rhocopy = self.rho.copy()
 
     def propagate_beta1(self, nsteps=1, commnorm=False):
@@ -286,7 +286,7 @@ class DMM:
         #
         #   The form is:
         #
-        #       drho/dbeta = K*rho + rho*K^{\dagger} + 2*rho*Tr(K*rho)
+        #       drho/dbeta = K*rho + rho*K^{\dagger} - 2*rho*Tr(K*rho)
         #   
         #   where
         #       
@@ -393,6 +393,7 @@ class DMM:
         
         # Reset the copy of rho
         rhocopy = self.rho.copy()
+        #rhocopy /= rhocopy.trace()
         
         for i in range(nsteps):
             ######################################################################
@@ -402,7 +403,7 @@ class DMM:
             #       rho(beta + dbeta) = rho(beta) + (1/6)*dbeta*(k1 + 2k2 + 2k3 + k4)
             #   
             #   where
-            #        f(rho) = K*rho + rho*K^{\dagger} + rho*Tr(K*rho)
+            #        f(rho) = K*rho + rho*K^{\dagger} + 2*rho*Tr(K*rho)
             #        K = -0.5*(H-mu)(I-rho)
             #    -   k1 = f(rho)
             #        k2 = f(rho + 0.5*dbeta*k1)
