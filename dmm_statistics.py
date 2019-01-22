@@ -168,19 +168,20 @@ if __name__ == '__main__':
     ax2.set_ylim([-0.2, 1.2])
     
     for i in range(numobjects):
+        dmm_list[i].beta = 0.0 #resets the beta value for the RK4 method
         dmm_list[i].rk4(dmm_list[i].deriv, numsteps)
         rk4_eigvals[i] = linalg.eigvalsh(dmm_list[i].rhocopy)[::-1]
         ax2.plot(dmm_list[i].E, rk4_eigvals[i], '*-', label='RK4')
         ax2.plot(dmm_list[i].E, exact_dmm[i], '*-', label='Exact')
     ax2.set_title("RK4 Population at $\\beta = %.2f$, $\mu = %.2f$" % (dmm_list[0].beta, dmm_list[0].mu))
     
-    '''
+    
     ###########################################################################
     #
     #   Compare ODE Solver methods
     #
     ###########################################################################
-    
+    '''
     rho_zvode1 = dmm1.rho.copy()
     scaledH1 = dmm1.H - dmm1.mu * dmm1.identity
     scaledH1 *= -0.5 
@@ -198,27 +199,53 @@ if __name__ == '__main__':
     while solver2.successful() and solver2.t < dmm2.dbeta*numsteps:
         solver2.integrate(solver2.t + dmm2.dbeta)
     dmm2_zvode_eigvals = linalg.eigvalsh(solver2.y.reshape(40,40))[::-1]
+    '''
+    rho_zvode_list = np.empty(numobjects, dtype=object)
+    solvers = np.empty(numobjects, dtype=object)
+    scaledH_list = np.empty(numobjects, dtype=object)
+    zvode_eigvals = np.empty(numobjects, dtype=object)
+    identity = dmm_list[0].identity
     
     fig3 = plt.figure(3)
     fig3.clf()
     ax3 = fig3.add_subplot(111)
-    ax3.set_title("Zvode Population at $\\beta = %.2f$, $\mu = %.2f$" % (dmm1.beta, dmm1.mu))
     ax3.set_xlabel('Population')
     ax3.set_ylabel('Energy')
     ax3.set_ylim([-.2, 1.2])
-    ax3.plot(dmm1.E, dmm1_zvode_eigvals, '*-', label='DMM 1')
-    ax3.plot(dmm2.E, dmm1_zvode_eigvals, '*-', label='DMM 2')
+    
+    for i in range(numobjects):
+        rho_zvode_list[i] = dmm_list[i].rho.copy()
+        scaledH_list[i] = -0.5*(dmm_list[i].H - dmm_list[i].mu * identity)
+        
+        solvers[i] = ode(rhsmatrix).set_integrator('zvode', method='bdf')
+        solvers[i].set_initial_value(rho_zvode_list[i].reshape(-1), 0.).set_f_params(scaledH_list[i])
+        while solvers[i].successful() and solvers[i].t < dmm_list[i].dbeta*numsteps:
+            solvers[i].integrate(solvers[i].t + dmm_list[i].dbeta)
+        
+        zvode_eigvals[i] = linalg.eigvalsh(solvers[i].y.reshape(40,40))[::-1]
+        
+        ax3.plot(dmm_list[i].E, zvode_eigvals[i], '*-', label='Zvode')
+        ax3.plot(dmm_list[i].E, exact_dmm[i], '*-', label='Exact')
+        
     ax3.legend(numpoints = 1)
+    ax3.set_title("Zvode Population at $\\beta = %.2f$, $\mu = %.2f$" % (dmm_list[0].beta, dmm_list[0].mu))
     
     ###########################################################################
     #
     #   Compare Zvode method to Propagate method
     #
     ###########################################################################
-    
+    '''
     print("Error norm b/w zvode and exact diagonalization for dmm1: %.2e" % np.linalg.norm(dmm1_zvode_eigvals - exact_dmm1))
     print("Error norm b/w propagation and exact diagonalization for dmm1: %.2e" % np.linalg.norm(prop_dmm1 - exact_dmm1))
     
     print("Error norm b/w zvode and exact diagonalization for dmm2: %.2e" % np.linalg.norm(dmm2_zvode_eigvals - exact_dmm2))
     print("Error norm b/w zvode and exact diagonalization for dmm2: %.2e" % np.linalg.norm(prop_dmm2 - exact_dmm2))
     '''
+    for i in range(numobjects):
+        zvode_err = np.linalg.norm(zvode_eigvals[i] - exact_dmm[i])
+        prop_err = np.linalg.norm(prop_dmm[i] - exact_dmm[i])
+        print("Error norm b/w zvode and exact for dmm[", i, "]: %.2e" % zvode_err)
+        print("Error norm b/w prop and exact for dmm[", i, "]: %.2e" % prop_err)
+        print("Difference in errors: %.2e" % (zvode_err - prop_err))
+        print("")
