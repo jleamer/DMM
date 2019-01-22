@@ -44,7 +44,8 @@ if __name__ == '__main__':
     
     np.random.seed(4936601)
     numsteps = 3000
-        
+    numobjects = 3
+    '''    
     dmm1 = DMM(
         dbeta=0.003,
         dmu=0.0005,
@@ -64,9 +65,9 @@ if __name__ == '__main__':
         H=np.random.normal(size=(40,40)) + 1j * np.random.normal(size=(40,40)),
         #np.random.rand(40, 40) + 1j * np.random.rand(40, 40)
     )
-    
-    dmm_list = np.empty(3, dtype=object)
-    for i in range(3):
+    '''
+    dmm_list = np.empty(numobjects, dtype=object)
+    for i in range(numobjects):
         dmm_list[i] = DMM(
                 dbeta=0.003,
                 dmu=0.0005,
@@ -112,33 +113,32 @@ if __name__ == '__main__':
     ax12.plot(dmm2.E, prop_dmm2, '*-', label='DMM2 prop')
     ax12.legend(numpoints = 1)
     '''
-    exact_dmm = np.empty(3, dtype=object)
-    prop_dmm = np.empty(3, dtype=object)
+    exact_dmm = np.empty(numobjects, dtype=object)
+    prop_dmm = np.empty(numobjects, dtype=object)
     
-    for i in range(3):
-        dmm_list[i].propagate_beta1(numsteps)
-        prop_dmm[i] = linalg.eigvalsh(dmm_list[i].rhocopy)[::-1]
-        exact_dmm[i] = dmm_list[i].get_exact_pop()
-        
     fig1 = plt.figure(1)
     fig1.clf()
     ax1 = fig1.add_subplot(111)
-    ax1.set_title("Population of DMM at $\\beta = %.2f$, $\mu = %.2f$" % (dmm_list[0].beta, dmm_list[0].mu))
     ax1.set_xlabel('Population')
     ax1.set_ylabel('Energy')
     ax1.set_ylim([-0.2, 1.2])
-    for i in range(3):
+    
+    for i in range(numobjects):
+        dmm_list[i].propagate_beta1(numsteps)
+        prop_dmm[i] = linalg.eigvalsh(dmm_list[i].rhocopy)[::-1]
+        exact_dmm[i] = dmm_list[i].get_exact_pop()
         ax1.plot(dmm_list[i].E, exact_dmm[i], '*-', label='Exact')
         ax1.plot(dmm_list[i].E, prop_dmm[i], '*-', label='Prop')
+    ax1.set_title("Population of DMM at $\\beta = %.2f$, $\mu = %.2f$" % (dmm_list[0].beta, dmm_list[0].mu))
     ax1.legend(numpoints = 1)
     
-    '''
+    
     ###########################################################################
     #
     #   Compare RK4 methods
     #
     ###########################################################################
-    
+    '''
     dmm1.beta = 0.0
     dmm1.rk4(dmm1.deriv, numsteps)
     dmm1_rk4_eigvals = linalg.eigvalsh(dmm1.rhocopy)[::-1]
@@ -146,6 +146,7 @@ if __name__ == '__main__':
     dmm2.beta = 0.0
     dmm2.rk4(dmm2.deriv, numsteps)
     dmm2_rk4_eigvals = linalg.eigvalsh(dmm2.rhocopy)[::-1]
+    
     
     fig2 = plt.figure(2)
     fig2.clf()
@@ -157,7 +158,23 @@ if __name__ == '__main__':
     ax2.plot(dmm1.E, dmm1_rk4_eigvals, '*-', label='DMM 1')
     ax2.plot(dmm2.E, dmm2_rk4_eigvals, '*-', label='DMM 2')
     ax2.legend(numpoints = 1)
+    '''
+    rk4_eigvals = np.empty(numobjects, dtype=object)
+    fig2 = plt.figure(2)
+    fig2.clf()
+    ax2 = fig2.add_subplot(111)
+    ax2.set_xlabel('Population')
+    ax2.set_ylabel('Energy')
+    ax2.set_ylim([-0.2, 1.2])
     
+    for i in range(numobjects):
+        dmm_list[i].rk4(dmm_list[i].deriv, numsteps)
+        rk4_eigvals[i] = linalg.eigvalsh(dmm_list[i].rhocopy)[::-1]
+        ax2.plot(dmm_list[i].E, rk4_eigvals[i], '*-', label='RK4')
+        ax2.plot(dmm_list[i].E, exact_dmm[i], '*-', label='Exact')
+    ax2.set_title("RK4 Population at $\\beta = %.2f$, $\mu = %.2f$" % (dmm_list[0].beta, dmm_list[0].mu))
+    
+    '''
     ###########################################################################
     #
     #   Compare ODE Solver methods
