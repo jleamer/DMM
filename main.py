@@ -7,8 +7,7 @@ import subprocess
 import sys
 
 # NT Poly
-import NTPolySwig as NT
-
+from NTPoly.Build.python import NTPolySwig as NT
 
 # MPI Module
 from mpi4py import MPI
