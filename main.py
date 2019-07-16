@@ -55,64 +55,64 @@ if __name__ == "__main__":
 			density = float(argument_value)
 		elif argument == '--number_of_electrons':
 			number_of_electrons = int(argument_value)
-
-	#Construct process grid
-	NT.ConstructGlobalProcessGrid(process_rows, process_columns, process_slices)
+	i = 0
+	while i < 100:
+		#Construct process grid
+		NT.ConstructGlobalProcessGrid(process_rows, process_columns, process_slices)
 	
-	#Setup solver parameters
-	solver_parameters = NT.SolverParameters()
-	solver_parameters.SetConvergeDiff(convergence_threshold)
-	solver_parameters.SetThreshold(threshold)
-	solver_parameters.SetVerbosity(True)
-
-	#Run the ScipyMatrixGenerator script to generate a random hamiltonian of size rows x rows
-	#Also construct the overlap matrix
-	subprocess.run(["python3", "ScipyMatrixGenerator.py", '--rows', str(rows), '--density', str(density)])
-	#hamiltonian = mmread("hamiltonian.mtx").toarray()
-	overlap = sparse.identity(rows, format='coo', dtype='complex')
-	mmwrite("overlap", overlap)
-	ntpoly_hamiltonian = NT.Matrix_ps("hamiltonian.mtx")
-	ntpoly_overlap = NT.Matrix_ps("overlap.mtx")
-	Density = NT.Matrix_ps(ntpoly_hamiltonian.GetActualDimension())
+		#Setup solver parameters
+		solver_parameters = NT.SolverParameters()
+		solver_parameters.SetConvergeDiff(convergence_threshold)
+		solver_parameters.SetThreshold(threshold)
+		solver_parameters.SetVerbosity(False)
 	
-	#Compute the density matrix
-	energy_value, chemical_potential = \
-		NT.DensityMatrixSolvers.TRS2(ntpoly_hamiltonian, ntpoly_overlap, number_of_electrons, Density, solver_parameters)
+		#Run the ScipyMatrixGenerator script to generate a random hamiltonian of size rows x rows
+		#Also construct the overlap matrix
+		subprocess.run(["python3", "ScipyMatrixGenerator.py", '--rows', str(rows), '--density', str(density)])
+		#hamiltonian = mmread("hamiltonian.mtx").toarray()
+		overlap = sparse.identity(rows, format='coo', dtype='complex')
+		mmwrite("overlap", overlap)
+		ntpoly_hamiltonian = NT.Matrix_ps("hamiltonian.mtx")
+		ntpoly_overlap = NT.Matrix_ps("overlap.mtx")
+		Density = NT.Matrix_ps(ntpoly_hamiltonian.GetActualDimension())
+		
+		#Compute the density matrix
+		energy_value, chemical_potential = \
+			NT.DensityMatrixSolvers.TRS2(ntpoly_hamiltonian, ntpoly_overlap, number_of_electrons, Density, solver_parameters)
 
-	#Output density matrix
-	Density.WriteToMatrixMarket(density_file_out)
-	ntpoly_hamiltonian.WriteToMatrixMarket("test.mtx")
-	ntpoly_density = mmread(density_file_out)
-	#print(np.linalg.eigvalsh(ntpoly_density.toarray()))
-	NT.DestructGlobalProcessGrid()
+		#Output density matrix
+		Density.WriteToMatrixMarket(density_file_out)
+		ntpoly_hamiltonian.WriteToMatrixMarket("test.mtx")
+		ntpoly_density = mmread(density_file_out)
+		#print(np.linalg.eigvalsh(ntpoly_density.toarray()))
+		NT.DestructGlobalProcessGrid()
 
 
+		#Compute rho from H(mu*I - hamiltonian) where H is the heaviside function using scipy
+		subprocess.run(["python3", "MatrixFunction.py", '--hamiltonian', 'hamiltonian.mtx', 
+				'--chemical_potential', str(chemical_potential), '--rows', str(rows)])
+		scipy_density = mmread("scipy_density.mtx")
 
-	#Compute rho from H(mu*I - hamiltonian) where H is the heaviside function using scipy
-	subprocess.run(["python3", "MatrixFunction.py", '--hamiltonian', 'hamiltonian.mtx', 
-			'--chemical_potential', str(chemical_potential), '--rows', str(rows)])
-	scipy_density = mmread("scipy_density.mtx")
+		#Run zvode and obtain its density matrix
+		subprocess.run(["python3", "zvode_example.py", '--hamiltonian', 'hamiltonian.mtx',
+				'--chemical_potential', str(chemical_potential), '--rows', str(rows)])
+		zvode_density = mmread("zvode_density.mtx")
 
-	#Run zvode and obtain its density matrix
-	subprocess.run(["python3", "zvode_example.py", '--hamiltonian', 'hamiltonian.mtx',
-			'--chemical_potential', str(chemical_potential), '--rows', str(rows)])
-	zvode_density = mmread("zvode_density.mtx")
+		"""
+		#Compare the results
+		subprocess.run(["python3", "plot.py", "--hamiltonian", 'hamiltonian.mtx'])
+		"""
 
-	"""
-	#Compare the results
-	subprocess.run(["python3", "plot.py", "--hamiltonian", 'hamiltonian.mtx'])
-	"""
+		#Save scipy results
+		filename = "scipy_density_" + str(rows) + str(number_of_electrons) + ".npz"
+		saveResults(filename, scipy_density, 1)
 
-	#Save scipy results
-	filename = "scipy_density_" + str(rows) + ".npz"
-	saveResults(filename, scipy_density, 1)
-
-	#Save zvode results
-	filename = "zvode_density_" + str(rows) + ".npz"
-	saveResults(filename, zvode_density, 1)
-
-	#Save NTPoly results
-	filename = "ntpoly_density_" + str(rows) + ".npz"
-	saveResults(filename, ntpoly_density, 1)
+		#Save zvode results
+		filename = "zvode_density_" + str(rows) + str(number_of_electrons) + ".npz"
+		saveResults(filename, zvode_density, 1)
 	
-	
+		#Save NTPoly results
+		filename = "ntpoly_density_" + str(rows) + str(number_of_electrons) + ".npz"
+		saveResults(filename, ntpoly_density, 1)
+
+		i += 1
