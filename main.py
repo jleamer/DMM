@@ -5,6 +5,9 @@ from scipy import sparse
 from scipy.sparse import rand
 import subprocess
 import sys
+import os.path
+
+SAVE_PATH = "/home/jacob/Documents/DMM/Sampling_Results/"
 
 # NT Poly
 from NTPoly.Build.python import NTPolySwig as NT
@@ -12,6 +15,16 @@ from NTPoly.Build.python import NTPolySwig as NT
 # MPI Module
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
+
+def saveResults(filename, matrix, keyword):
+	"""
+	Function for saving density matrices to a file using np.savez
+	"""
+	complete_path = os.path.join(SAVE_PATH, filename)
+	output = open(complete_path, "ab+")
+	np.savez(output, matrix, keyword)
+	output.close()
+
 
 if __name__ == "__main__":
 
@@ -85,6 +98,21 @@ if __name__ == "__main__":
 			'--chemical_potential', str(chemical_potential), '--rows', str(rows)])
 	zvode_density = mmread("zvode_density.mtx")
 
-
+	"""
 	#Compare the results
 	subprocess.run(["python3", "plot.py", "--hamiltonian", 'hamiltonian.mtx'])
+	"""
+
+	#Save scipy results
+	filename = "scipy_density_" + str(rows) + ".npz"
+	saveResults(filename, scipy_density, 1)
+
+	#Save zvode results
+	filename = "zvode_density_" + str(rows) + ".npz"
+	saveResults(filename, zvode_density, 1)
+
+	#Save NTPoly results
+	filename = "ntpoly_density_" + str(rows) + ".npz"
+	saveResults(filename, ntpoly_density, 1)
+	
+	
