@@ -16,15 +16,24 @@ from NTPoly.Build.python import NTPolySwig as NT
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
-def saveResults(filename, matrix, keyword):
+def saveResults(filename, matrix):
 	"""
 	Function for saving density matrices to a file using np.savez
 	"""
 	complete_path = os.path.join(SAVE_PATH, filename)
-	output = open(complete_path, "ab+")
-	np.savez(output, matrix, keyword)
-	output.close()
+	print(type(matrix[0]))
+	np.savez(complete_path, *matrix)
 
+def getNorm(filename):
+	"""
+	Function for taking the norms of the density matrices saved by np.savez
+	"""
+	complete_path = os.path.join(SAVE_PATH, filename)
+	matrices = np.load(complete_path)
+	print(matrices.files)
+	norms = [np.linalg.norm(matrices['arr_' + str(i)]) for i in range(len(matrices.files))]
+	return norms
+		
 
 if __name__ == "__main__":
 
@@ -55,8 +64,15 @@ if __name__ == "__main__":
 			density = float(argument_value)
 		elif argument == '--number_of_electrons':
 			number_of_electrons = int(argument_value)
+	
+	#Save density matrices in coo format
+	num_runs = 2
+	ntpoly_densities = []
+	scipy_densities = []
+	zvode_densities = []	
+
 	i = 0
-	while i < 100:
+	while i < num_runs:
 		#Construct process grid
 		NT.ConstructGlobalProcessGrid(process_rows, process_columns, process_slices)
 	
@@ -84,7 +100,7 @@ if __name__ == "__main__":
 		Density.WriteToMatrixMarket(density_file_out)
 		ntpoly_hamiltonian.WriteToMatrixMarket("test.mtx")
 		ntpoly_density = mmread(density_file_out)
-		#print(np.linalg.eigvalsh(ntpoly_density.toarray()))
+		ntpoly_densities.append(ntpoly_density.toarray())
 		NT.DestructGlobalProcessGrid()
 
 
@@ -92,27 +108,41 @@ if __name__ == "__main__":
 		subprocess.run(["python3", "MatrixFunction.py", '--hamiltonian', 'hamiltonian.mtx', 
 				'--chemical_potential', str(chemical_potential), '--rows', str(rows)])
 		scipy_density = mmread("scipy_density.mtx")
+		scipy_densities.append(scipy_density.toarray())
 
 		#Run zvode and obtain its density matrix
 		subprocess.run(["python3", "zvode_example.py", '--hamiltonian', 'hamiltonian.mtx',
 				'--chemical_potential', str(chemical_potential), '--rows', str(rows)])
 		zvode_density = mmread("zvode_density.mtx")
+		zvode_densities.append(zvode_density.toarray())
 
 		"""
 		#Compare the results
 		subprocess.run(["python3", "plot.py", "--hamiltonian", 'hamiltonian.mtx'])
 		"""
-
-		#Save scipy results
-		filename = "scipy_density_" + str(rows) + str(number_of_electrons) + ".npz"
-		saveResults(filename, scipy_density, 1)
-
-		#Save zvode results
-		filename = "zvode_density_" + str(rows) + str(number_of_electrons) + ".npz"
-		saveResults(filename, zvode_density, 1)
-	
-		#Save NTPoly results
-		filename = "ntpoly_density_" + str(rows) + str(number_of_electrons) + ".npz"
-		saveResults(filename, ntpoly_density, 1)
-
+		
 		i += 1
+		
+
+	#Save scipy results
+	scipy_filename = "scipy_density_" + str(rows) + "_" + str(number_of_electrons) + ".npz"
+	saveResults(scipy_filename, scipy_densities)
+	
+	#Save zvode results
+	zvode_filename = "zvode_density_" + str(rows) + "_" + str(number_of_electrons) + ".npz"
+	saveResults(zvode_filename, zvode_densities)
+	
+	#Save NTPoly results
+	ntpoly_filename = "ntpoly_density_" + str(rows) + "_" + str(number_of_electrons) + ".npz"
+	saveResults(ntpoly_filename, ntpoly_densities)
+
+	
+	#Pull data from .npz files and analyze them
+	scipy_norms = getNorm(scipy_filename)
+	print(scipy_norms)
+
+	zvode_norms = getNorm(zvode_filename)
+	print(zvode_norms)
+
+	ntpoly_norms = getNorm(scipy_filename)
+	print(ntpoly_norms)
