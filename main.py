@@ -26,11 +26,12 @@ def saveResults(filename, matrix):
 
 def getNorm(filename):
 	"""
-	Function for taking the norms of the density matrices saved by np.savez
+	Function for taking the norms of the rho^2-rho where rho was saved by np.savez
 	"""
 	complete_path = os.path.join(SAVE_PATH, filename)
 	matrices = np.load(complete_path)
-	norms = [np.linalg.norm(matrices['arr_' + str(i)]) for i in range(len(matrices.files))]
+	diff = [matrices['arr_' + str(i)].dot(matrices['arr_' + str(i)]) - matrices['arr_' + str(i)] for i in range(len(matrices.files))]
+	norms = [np.linalg.norm(diff[i]) for i in range(len(matrices.files))]
 	return norms
 		
 def getEnergy(filename, hamiltonian_file):
@@ -146,6 +147,7 @@ if __name__ == "__main__":
 
 	
 	#Pull data from .npz files and analyze them
+	#Specifically, we want to plot norm of rho^2-rho vs. energy
 	scipy_norms = getNorm(scipy_filename)
 	print(scipy_norms)
 	scipy_energies = getEnergy(scipy_filename, 'hamiltonian.mtx')
