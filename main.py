@@ -6,6 +6,7 @@ from scipy.sparse import rand
 import subprocess
 import sys
 import os.path
+import matplotlib.pyplot as plt
 
 SAVE_PATH = "/home/jacob/Documents/DMM/Sampling_Results/"
 
@@ -157,8 +158,31 @@ if __name__ == "__main__":
 	print(zvode_norms)
 	zvode_energies = getEnergy(zvode_filename, 'hamiltonian.mtx')
 	print(zvode_energies)
-
+	
 	ntpoly_norms = getNorm(ntpoly_filename)
 	print(ntpoly_norms)
 	ntpoly_energies = getEnergy(ntpoly_filename, 'hamiltonian.mtx')
 	print(ntpoly_energies)
+	
+
+	#Plot the norms vs energy
+	plt.subplot(131)
+	plt.title("Scipy")
+	plt.scatter(scipy_energies, scipy_norms)
+	plt.xlabel("Energy")
+	plt.ylabel("Norm")
+
+	plt.subplot(132)
+	plt.title("Zvode")
+	plt.scatter(zvode_energies, zvode_norms)
+	plt.xlabel("Energy")
+	#plt.ylabel("Norm")
+
+	plt.subplot(133)
+	plt.title("NTPoly")
+	plt.scatter(ntpoly_energies, ntpoly_norms)
+	plt.xlabel("Energy")
+	#plt.ylabel("Norm")
+	
+	plt.show()
+	
