@@ -30,10 +30,18 @@ def getNorm(filename):
 	"""
 	complete_path = os.path.join(SAVE_PATH, filename)
 	matrices = np.load(complete_path)
-	print(matrices.files)
 	norms = [np.linalg.norm(matrices['arr_' + str(i)]) for i in range(len(matrices.files))]
 	return norms
 		
+def getEnergy(filename, hamiltonian_file):
+	"""
+	Function for obtaining the energies of the density matrices saved by np.saves
+	"""
+	hamiltonian = mmread(hamiltonian_file).toarray()
+	complete_path = os.path.join(SAVE_PATH, filename)
+	matrices = np.load(complete_path)
+	energies = [matrices['arr_' + str(i)].dot(hamiltonian).trace() for i in range(len(matrices.files))]
+	return energies
 
 if __name__ == "__main__":
 
@@ -140,9 +148,15 @@ if __name__ == "__main__":
 	#Pull data from .npz files and analyze them
 	scipy_norms = getNorm(scipy_filename)
 	print(scipy_norms)
+	scipy_energies = getEnergy(scipy_filename, 'hamiltonian.mtx')
+	print(scipy_energies)
 
 	zvode_norms = getNorm(zvode_filename)
 	print(zvode_norms)
+	zvode_energies = getEnergy(zvode_filename, 'hamiltonian.mtx')
+	print(zvode_energies)
 
-	ntpoly_norms = getNorm(scipy_filename)
+	ntpoly_norms = getNorm(ntpoly_filename)
 	print(ntpoly_norms)
+	ntpoly_energies = getEnergy(ntpoly_filename, 'hamiltonian.mtx')
+	print(ntpoly_energies)
