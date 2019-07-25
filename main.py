@@ -5,7 +5,8 @@ from scipy import sparse
 from scipy.sparse import rand
 import subprocess
 import sys
-import os.path
+import os
+import zipfile
 import matplotlib.pyplot as plt
 
 SAVE_PATH = "/home/jacob/Documents/DMM/Sampling_Results/"
@@ -22,8 +23,34 @@ def saveResults(filename, matrix):
 	Function for saving density matrices to a file using np.savez
 	"""
 	complete_path = os.path.join(SAVE_PATH, filename)
-	print(type(matrix[0]))
-	np.savez(complete_path, *matrix)
+	if not os.path.exists(complete_path):
+		archive = zipfile.ZipFile(complete_path, mode="w")
+		for i in range(len(matrix)):
+			"""
+			Save a matrix to a .npy file and then write it to the zipfile
+			Then delete the file that was made outside the zipfile
+			"""
+			filename = "arr_" + str(i) + ".npy"
+			numpy_file = np.save(filename, matrix[i])
+			archive.write(filename)
+			os.remove(filename)
+		archive.close()
+	
+	else:
+		archive = zipfile.ZipFile(complete_path, mode="a")
+		numfiles = len(archive.namelist())
+		for i in range(len(matrix)):
+			"""
+			Save the matrices to .npy file and write each one to the zipfile
+			The name of the files takes into account any files already there
+			Then delete the file that was made outside the zipfile
+			"""
+			filename = "arr_" + str(i + numfiles) + ".npy"
+			numpy_file = np.save(filename, matrix[i])
+			archive.write(filename)
+			os.remove(filename)
+		archive.close()
+
 
 def getNorm(filename):
 	"""
@@ -31,6 +58,7 @@ def getNorm(filename):
 	"""
 	complete_path = os.path.join(SAVE_PATH, filename)
 	matrices = np.load(complete_path)
+	print(len(matrices.files))
 	diff = [matrices['arr_' + str(i)].dot(matrices['arr_' + str(i)]) - matrices['arr_' + str(i)] for i in range(len(matrices.files))]
 	norms = [np.linalg.norm(diff[i]) for i in range(len(matrices.files))]
 	return norms
@@ -45,6 +73,13 @@ def getEnergy(filename, hamiltonian_file):
 	energies = [matrices['arr_' + str(i)].dot(hamiltonian).trace() for i in range(len(matrices.files))]
 	return energies
 
+def getAverage(filename):
+	"""
+	Function for obtaining the average of the density matrices in the file
+	"""
+	complete_path = os.path.join(SAVE_PATH, filename)
+	matrices = np.load(complete_path)
+	
 if __name__ == "__main__":
 
 	#set up mpi
@@ -75,8 +110,8 @@ if __name__ == "__main__":
 		elif argument == '--number_of_electrons':
 			number_of_electrons = int(argument_value)
 	
-	#Save density matrices in coo format
-	num_runs = 2
+	#Set up lists for storing the density matrix computed during each run
+	num_runs = 10
 	ntpoly_densities = []
 	scipy_densities = []
 	zvode_densities = []	
@@ -130,9 +165,10 @@ if __name__ == "__main__":
 		#Compare the results
 		subprocess.run(["python3", "plot.py", "--hamiltonian", 'hamiltonian.mtx'])
 		"""
-		
+	
 		i += 1
-		
+		print(i)
+
 
 	#Save scipy results
 	scipy_filename = "scipy_density_" + str(rows) + "_" + str(number_of_electrons) + ".npz"
@@ -183,6 +219,8 @@ if __name__ == "__main__":
 	plt.scatter(ntpoly_energies, ntpoly_norms)
 	plt.xlabel("Energy")
 	#plt.ylabel("Norm")
+	
+
 	
 	plt.show()
 	

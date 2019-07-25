@@ -20,7 +20,6 @@ if __name__ == "__main__":
 
 	#compute heaviside step function of mu*I-H
 	hamiltonian = mmread(hamiltonian_file).toarray()
-	print(type(hamiltonian[0][0]))
 	scaled_H = chemical_potential * np.identity(hamiltonian[0].size) - hamiltonian	
 	rho = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
 	#print(np.linalg.eigvalsh(rho))
