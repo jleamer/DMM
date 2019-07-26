@@ -9,7 +9,7 @@ import os
 import zipfile
 import matplotlib.pyplot as plt
 
-SAVE_PATH = "/home/jacob/Documents/DMM/Sampling_Results/"
+SAVE_PATH = "/home/jacob/Documents/DMM/Huckel_Sampling_Results/"
 
 # NT Poly
 from NTPoly.Build.python import NTPolySwig as NT
@@ -21,6 +21,9 @@ comm = MPI.COMM_WORLD
 def saveResults(filename, matrix):
 	"""
 	Function for saving density matrices to a file using np.savez
+	Params:
+		filename - string containing the name of the archive
+		matrix - list of density matrices that are to be saved
 	"""
 	complete_path = os.path.join(SAVE_PATH, filename)
 	if not os.path.exists(complete_path):
@@ -55,6 +58,10 @@ def saveResults(filename, matrix):
 def getNorm(filename):
 	"""
 	Function for taking the norms of the rho^2-rho where rho was saved by np.savez
+	Params:
+		filename - string containing the name of the archive
+	Returns:
+		norms - a list of the norms rho^2-rho for each matrix in the archive
 	"""
 	complete_path = os.path.join(SAVE_PATH, filename)
 	matrices = np.load(complete_path)
@@ -66,6 +73,11 @@ def getNorm(filename):
 def getEnergy(filename, hamiltonian_file):
 	"""
 	Function for obtaining the energies of the density matrices saved by np.saves
+	Params:
+		filename - string containing the name of the archive
+		hamiltonian_file - the name of the hamiltonian file to be used in energy calculations
+	Returns:
+		energy - a list of the energies (i.e. Tr(rho*H)) calculated for each density matrix in the archive
 	"""
 	hamiltonian = mmread(hamiltonian_file).toarray()
 	complete_path = os.path.join(SAVE_PATH, filename)
@@ -73,12 +85,6 @@ def getEnergy(filename, hamiltonian_file):
 	energies = [matrices['arr_' + str(i)].dot(hamiltonian).trace() for i in range(len(matrices.files))]
 	return energies
 
-def getAverage(filename):
-	"""
-	Function for obtaining the average of the density matrices in the file
-	"""
-	complete_path = os.path.join(SAVE_PATH, filename)
-	matrices = np.load(complete_path)
 	
 if __name__ == "__main__":
 
@@ -109,9 +115,10 @@ if __name__ == "__main__":
 			density = float(argument_value)
 		elif argument == '--number_of_electrons':
 			number_of_electrons = int(argument_value)
+		elif argument == '--runs':
+			num_runs = int(argument_value)
 	
 	#Set up lists for storing the density matrix computed during each run
-	num_runs = 10
 	ntpoly_densities = []
 	scipy_densities = []
 	zvode_densities = []	
@@ -167,7 +174,6 @@ if __name__ == "__main__":
 		"""
 	
 		i += 1
-		print(i)
 
 
 	#Save scipy results
@@ -219,8 +225,6 @@ if __name__ == "__main__":
 	plt.scatter(ntpoly_energies, ntpoly_norms)
 	plt.xlabel("Energy")
 	#plt.ylabel("Norm")
-	
-
 	
 	plt.show()
 	
