@@ -11,44 +11,7 @@ import matplotlib.pyplot as plt
 
 SAVE_PATH = "/home/jacob/Documents/DMM/Sampling_Results/"
 
-def saveResults(filename, matrix):
-	"""
-	Function for saving density matrices to a file using np.savez
-	Params:
-		filename - string containing the name of the archive
-		matrix - list of density matrices that are to be saved
-	"""
-	complete_path = os.path.join(SAVE_PATH, filename)
-	if not os.path.exists(complete_path):
-		archive = zipfile.ZipFile(complete_path, mode="w")
-		for i in range(len(matrix)):
-			"""
-			Save a matrix to a .npy file and then write it to the zipfile
-			Then delete the file that was made outside the zipfile
-			"""
-			filename = "arr_" + str(i) + ".npy"
-			numpy_file = np.save(filename, matrix[i])
-			archive.write(filename)
-			os.remove(filename)
-		archive.close()
-	
-	else:
-		archive = zipfile.ZipFile(complete_path, mode="a")
-		numfiles = len(archive.namelist())
-		for i in range(len(matrix)):
-			"""
-			Save the matrices to .npy file and write each one to the zipfile
-			The name of the files takes into account any files already there
-			Then delete the file that was made outside the zipfile
-			"""
-			filename = "arr_" + str(i + numfiles) + ".npy"
-			numpy_file = np.save(filename, matrix[i])
-			archive.write(filename)
-			os.remove(filename)
-		archive.close()
-
-
-def getNorm(filename):
+def getNorm(filename, save_path):
 	"""
 	Function for taking the norms of the rho^2-rho where rho was saved by np.savez
 	Params:
@@ -56,26 +19,26 @@ def getNorm(filename):
 	Returns:
 		norms - a list of the norms rho^2-rho for each matrix in the archive
 	"""
-	complete_path = os.path.join(SAVE_PATH, filename)
+	complete_path = os.path.join(save_path, filename)
 	matrices = np.load(complete_path)
 	print(len(matrices.files))
 	diff = [matrices['arr_' + str(i)].dot(matrices['arr_' + str(i)]) - matrices['arr_' + str(i)] for i in range(len(matrices.files))]
 	norms = [np.linalg.norm(diff[i]) for i in range(len(matrices.files))]
 	return norms
 		
-def getEnergy(filename, hamiltonian_file):
+def getEnergy(filename, hamiltonians, save_path):
 	"""
 	Function for obtaining the energies of the density matrices saved by np.saves
 	Params:
 		filename - string containing the name of the archive
-		hamiltonian_file - the name of the hamiltonian file to be used in energy calculations
+		hamiltonians - a list of the hamiltonians to be used in energy calculations
 	Returns:
 		energy - a list of the energies (i.e. Tr(rho*H)) calculated for each density matrix in the archive
 	"""
-	hamiltonian = mmread(hamiltonian_file).toarray()
-	complete_path = os.path.join(SAVE_PATH, filename)
+	
+	complete_path = os.path.join(save_path, filename)
 	matrices = np.load(complete_path)
-	energies = [matrices['arr_' + str(i)].dot(hamiltonian).trace() for i in range(len(matrices.files))]
+	energies = [matrices['arr_' + str(i)].dot(hamiltonians['arr_' + str(i)]).trace() for i in range(len(matrices.files))]
 	return energies
 
 
@@ -90,17 +53,26 @@ for i in range(1, len(sys.argv), 2):
 		zvode_archive = argument_value
 	elif argument == '--ntpoly_archive':
 		ntpoly_archive = argument_value
+	elif argument == '--hamiltonian_archive':
+		hamiltonian_archive = argument_value
 
 #Pull data from .npz files and analyze them
 #Specifically, we want to plot norm of rho^2-rho vs. energy
-scipy_norms = getNorm(scipy_archive)
-scipy_energies = getEnergy(scipy_archive, 'hamiltonian.mtx')
+#Start with loading hamiltonians
+save_path = os.path.join("/home/jacob/Documents/DMM/Sampling_Results/Hamiltonian", hamiltonian_archive)
+hamiltonians = np.load(save_path)
 
-zvode_norms = getNorm(zvode_archive)
-zvode_energies = getEnergy(zvode_archive, 'hamiltonian.mtx')
+save_path = "/home/jacob/Documents/DMM/Sampling_Results/Scipy"
+scipy_norms = getNorm(scipy_archive, save_path)
+scipy_energies = getEnergy(scipy_archive, hamiltonians, save_path)
+
+save_path = "/home/jacob/Documents/DMM/Sampling_Results/Zvode"
+zvode_norms = getNorm(zvode_archive, save_path)
+zvode_energies = getEnergy(zvode_archive, hamiltonians, save_path)
 	
-ntpoly_norms = getNorm(ntpoly_archive)
-ntpoly_energies = getEnergy(ntpoly_archive, 'hamiltonian.mtx')	
+save_path = "/home/jacob/Documents/DMM/Sampling_Results/NTPoly"
+ntpoly_norms = getNorm(ntpoly_archive, save_path)
+ntpoly_energies = getEnergy(ntpoly_archive, hamiltonians, save_path)	
 
 #Plot the norms vs energy
 plt.subplot(131)

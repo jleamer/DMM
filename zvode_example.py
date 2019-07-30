@@ -12,22 +12,24 @@ import copy
 
 
 def rhsmatrix(beta, rho, scaledH):
-    '''
-    This function implements the rhs of the derivative expression 
-    for use in the python ODE Solvers
-    Input:
-        beta - time step that the function is being called on; not actually used
-        rho - the matrix that is being propagated
-        scaledH - scaled Hamiltonian operator
-    Output:
-        f - the derivative of the matrix
-    '''
-    rows = int(np.sqrt(rho.size))
-    rho = rho.reshape(rows,rows)
-    identity = np.identity(rho.shape[0], dtype=float)
-    K = scaledH.dot(identity - rho)
-    f = K.dot(rho) + rho.dot(K.conj().T) - 0*rho*(K.dot(rho)).trace().sum()
-    return f.reshape(-1)
+	'''
+	This function implements the rhs of the derivative expression 
+	for use in the python ODE Solvers
+	Input:
+		beta - time step that the function is being called on; not actually used
+		rho - the matrix that is being propagated
+		scaledH - scaled Hamiltonian operator
+	Output:
+		f - the derivative of the matrix
+	'''
+	rows = int(np.sqrt(rho.size))
+	rho = rho.reshape(rows,rows)
+	identity = np.identity(rho.shape[0], dtype=float)
+	#mu = H.dot(rho).dot(identity-rho).trace() / rho.dot(identity-rho).trace()
+	#scaledH = -0.5*(H - mu* identity)
+	K = scaledH.dot(identity - rho)
+	f = K.dot(rho) + rho.dot(K.conj().T) - 0*rho*(K.dot(rho)).trace().sum()
+	return f.reshape(-1)
 
 
 if __name__ == '__main__':
@@ -61,11 +63,12 @@ if __name__ == '__main__':
 	while solver.successful() and solver.t < final_beta:
 		solver.integrate(solver.t + dmm.dbeta)
 		
-		
-	print("Beta: ", final_beta)
-	print("Temp: ", 1/(final_beta*1.38e-23))
+	
 	rho = solver.y.copy()
 	rho = rho.reshape((rows, rows))
+	mu = dmm.H.dot(rho).dot(dmm.identity-rho).trace() / rho.dot(dmm.identity-rho).trace()
+	print(mu)
+	
 	#print(np.linalg.norm(rho - rho.dot(rho)))
 	#print(rho - rho.dot(rho))
 	

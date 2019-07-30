@@ -9,7 +9,7 @@ import os
 import zipfile
 import matplotlib.pyplot as plt
 
-SAVE_PATH = "/home/jacob/Documents/DMM/Huckel_Sampling_Results/"
+SAVE_PATH = "/home/jacob/Documents/DMM/Sampling_Results/"
 
 # NT Poly
 from NTPoly.Build.python import NTPolySwig as NT
@@ -18,6 +18,43 @@ from NTPoly.Build.python import NTPolySwig as NT
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 	
+def saveResults(filename, matrix, save_path):
+	"""
+	Function for saving density matrices to a file using np.savez
+	Params:
+		filename - string containing the name of the archive
+		matrix - list of density matrices that are to be saved
+	"""
+	complete_path = os.path.join(save_path, filename)
+	if not os.path.exists(complete_path):
+		archive = zipfile.ZipFile(complete_path, mode="w")
+		for i in range(len(matrix)):
+			"""
+			Save a matrix to a .npy file and then write it to the zipfile
+			Then delete the file that was made outside the zipfile
+			"""
+			filename = "arr_" + str(i) + ".npy"
+			numpy_file = np.save(filename, matrix[i])
+			archive.write(filename)
+			os.remove(filename)
+		archive.close()
+	
+	else:
+		archive = zipfile.ZipFile(complete_path, mode="a")
+		numfiles = len(archive.namelist())
+		for i in range(len(matrix)):
+			"""
+			Save the matrices to .npy file and write each one to the zipfile
+			The name of the files takes into account any files already there
+			Then delete the file that was made outside the zipfile
+			"""
+			filename = "arr_" + str(i + numfiles) + ".npy"
+			numpy_file = np.save(filename, matrix[i])
+			archive.write(filename)
+			os.remove(filename)
+		archive.close()
+
+
 if __name__ == "__main__":
 
 	#set up mpi
@@ -53,7 +90,8 @@ if __name__ == "__main__":
 	#Set up lists for storing the density matrix computed during each run
 	ntpoly_densities = []
 	scipy_densities = []
-	zvode_densities = []	
+	zvode_densities = []
+	hamiltonians = []	
 
 	i = 0
 	while i < num_runs:
@@ -70,6 +108,9 @@ if __name__ == "__main__":
 		#Also construct the overlap matrix
 		subprocess.run(["python3", "ScipyMatrixGenerator.py", '--rows', str(rows), '--density', str(density)])
 		#hamiltonian = mmread("hamiltonian.mtx").toarray()
+		
+		hamiltonians.append(mmread("hamiltonian.mtx").toarray())
+
 		overlap = sparse.identity(rows, format='coo', dtype='complex')
 		mmwrite("overlap", overlap)
 		ntpoly_hamiltonian = NT.Matrix_ps("hamiltonian.mtx")
@@ -79,6 +120,7 @@ if __name__ == "__main__":
 		#Compute the density matrix
 		energy_value, chemical_potential = \
 			NT.DensityMatrixSolvers.TRS2(ntpoly_hamiltonian, ntpoly_overlap, number_of_electrons, Density, solver_parameters)
+		print(chemical_potential)
 
 		#Output density matrix
 		Density.WriteToMatrixMarket(density_file_out)
@@ -108,14 +150,22 @@ if __name__ == "__main__":
 		i += 1
 
 
+	#Save Hamiltonians
+	save_path = "/home/jacob/Documents/DMM/Sampling_Results/Hamiltonian"
+	hamiltonian_filename = "hamiltonian_" + str(rows) + "_" + str(number_of_electrons) + ".npz"
+	saveResults(hamiltonian_filename, hamiltonians, save_path)
+
 	#Save scipy results
+	save_path = "/home/jacob/Documents/DMM/Sampling_Results/Scipy"
 	scipy_filename = "scipy_density_" + str(rows) + "_" + str(number_of_electrons) + ".npz"
-	saveResults(scipy_filename, scipy_densities)
+	saveResults(scipy_filename, scipy_densities, save_path)
 	
 	#Save zvode results
+	save_path = "/home/jacob/Documents/DMM/Sampling_Results/Zvode"
 	zvode_filename = "zvode_density_" + str(rows) + "_" + str(number_of_electrons) + ".npz"
-	saveResults(zvode_filename, zvode_densities)
+	saveResults(zvode_filename, zvode_densities, save_path)
 	
 	#Save NTPoly results
+	save_path = "/home/jacob/Documents/DMM/Sampling_Results/NTPoly"
 	ntpoly_filename = "ntpoly_density_" + str(rows) + "_" + str(number_of_electrons) + ".npz"
-	saveResults(ntpoly_filename, ntpoly_densities)
+	saveResults(ntpoly_filename, ntpoly_densities, save_path)
