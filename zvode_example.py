@@ -41,6 +41,8 @@ if __name__ == '__main__':
 			hamiltonian_file = argument_value
 		elif argument == '--chemical_potential':
 			chemical_potential = float(argument_value)
+		elif argument == '--density_file_out':
+			density_file = argument_value
 
 	dmm = DMM(
                 dbeta=.03,
@@ -72,4 +74,10 @@ if __name__ == '__main__':
 	#print(np.linalg.norm(rho - rho.dot(rho)))
 	#print(rho - rho.dot(rho))
 	
-	mmwrite("zvode_density", sparse.coo_matrix(rho))
+	try:
+		density_file
+	except NameError:
+		density_file = "zvode_density.mtx"
+	
+
+	mmwrite(density_file, sparse.coo_matrix(rho))

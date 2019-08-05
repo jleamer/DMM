@@ -17,6 +17,8 @@ if __name__ == "__main__":
 			chemical_potential = float(argument_value)
 		if argument == '--rows':
 			rows = int(argument_value)
+		elif argument == '--density_file_out':
+			density_file = argument_value
 
 	#compute heaviside step function of mu*I-H
 	hamiltonian = mmread(hamiltonian_file).toarray()
@@ -24,5 +26,10 @@ if __name__ == "__main__":
 	rho = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
 	#print(np.linalg.eigvalsh(rho))
 
-	mmwrite("scipy_density", sparse.coo_matrix(rho))
+	try:
+		density_file
+	except NameError:
+		density_file = "scipy_density.mtx"
+
+	mmwrite(density_file, sparse.coo_matrix(rho))
 
