@@ -53,3 +53,5 @@ class DMM:
 		:returns: the exact Fermi-Dirac population distribution
 		'''
 		return 1 / (1 + np.exp(self.beta*(self.E - self.mu)))
+
+		

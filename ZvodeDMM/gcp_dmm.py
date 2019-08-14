@@ -9,9 +9,6 @@ class GCP_DMM(DMM):
 	def __init__(self, **kwargs):
 		#Call general DMM constructor
 		DMM.__init__(self, **kwargs)
-
-		#Assign remaining variables
-		self.mu = mu
 	
 		try:
 			self.mu

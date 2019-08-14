@@ -10,9 +10,6 @@ class CP_DMM(DMM):
 	def __init__(self, **kwargs):
 		#Call the DMM constructor
 		DMM.__init__(self, **kwargs)
-	
-		#Assign remaining variables
-		self.num_electrons = num_electrons
 
 		try:
 			self.num_electrons
@@ -20,7 +17,7 @@ class CP_DMM(DMM):
 			raise AttributeError("Number of electrons need to be specified")
 
 		#Define the initial density matrix
-		self.rho = num_electrons/self.identity.trace() * self.identity
+		self.rho = self.num_electrons/self.identity.trace() * self.identity
 
 	def rhs(self, beta, rho, H, identity):
 		'''
