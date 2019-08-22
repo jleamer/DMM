@@ -54,3 +54,17 @@ class DMM:
 		'''
 		return 1 / (1 + np.exp(self.beta*(self.E - self.mu)))
 
+	def purify(self):
+		'''
+		:returns: self with rho made idempotent
+		'''
+		while True:
+			rho_sq = self.rho.dot(self.rho)
+			rho_cu = self.rho.dot(rho_sq)
+
+			if np.allclose(rho_sq, self.rho, rtol = 1e-10, atol=1e-10):
+				break
+			
+			self.rho = 3*rho_sq - 2*rho_cu
+
+		return self

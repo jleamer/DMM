@@ -45,11 +45,13 @@ class GCP_DMM(DMM):
 		'''
 		solver = ode(self.rhs).set_integrator('zvode', method = 'bdf')
 		solver.set_initial_value(self.rho.reshape(-1), self.beta).set_f_params(self.H, self.identity, self.mu)
-	
+		steps = 0
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
-
-		return solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
+			steps += 1
+		print("GCP Zvode steps: ", str(steps))
+		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
+		return self
 
 
 if __name__ == '__main__':

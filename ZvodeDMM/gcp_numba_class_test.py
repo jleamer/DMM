@@ -7,14 +7,14 @@ spec = [
 	('H', complex128[:,:]),
 	('dbeta', float32),
 	('beta', float32),
-	('num_electrons', int32),
+	('mu', int32),
 	('identity', complex128[:,:]),
 	('rho', complex128[:,:])
 ]
 
 #@jitclass(spec)
-class CP_Numba():
-	def __init__(self, H, dbeta, beta, num_electrons, identity, rho):
+class GCP_Numba():
+	def __init__(self, H, dbeta, beta, mu, identity, rho):
 		'''
 		The following parameters need to be specified:
 			H - the hamiltonian of the system
@@ -24,7 +24,7 @@ class CP_Numba():
 		self.H = H
 		self.dbeta = dbeta
 		self.beta = beta
-		self.num_electrons = num_electrons
+		self.mu = mu
 
 		#Save the identity matrix
 		self.identity = identity
@@ -80,12 +80,9 @@ class CP_Numba():
 		'''
 		rows = int(np.sqrt(rho.size))
 		rho = rho.reshape(rows,rows)
-		c = rho.dot(identity-rho)
-		alpha = self.eff_trace(H, c) / self.trace(c)
-		scaledH = -0.5*(H - alpha* identity)
+		scaledH = -0.5*(H - self.mu * identity)
 		K = scaledH.dot(identity - rho)
-		f = K.dot(rho)
-		f += f.conj().T
+		f = K.dot(rho) + rho.dot(K.conj().T)
 		return f.reshape(-1)
 
 	def zvode(self, nsteps):
@@ -126,10 +123,9 @@ if __name__ == '__main__':
 	num_electrons = 5
 	identity = np.identity(H.shape[0], dtype=H.dtype)
 	rho = num_electrons/identity.trace() * identity
-	test = CP_Numba(H, dbeta, beta, num_electrons, identity, rho)	
+	test = GCP_Numba(H, dbeta, beta, num_electrons, identity, rho)	
 	
 	test.rhs(beta, rho, H, identity)
 	results = test.zvode(nsteps)
 	print(np.linalg.eigvalsh(results[0]))
 	print("Time to complete: %s" % results[1])
-	
