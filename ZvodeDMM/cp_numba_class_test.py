@@ -101,7 +101,9 @@ class CP_Numba():
 			solver.integrate(solver.t + self.dbeta)
 		end = time.time()
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
-		return [solver.y.reshape(self.rho.shape[0], self.rho.shape[0]), end-start]
+		self.t = solver.t
+		print(end-start)
+		return self
 
 	def purify(self):
 		'''
@@ -129,7 +131,6 @@ if __name__ == '__main__':
 	test = CP_Numba(H, dbeta, beta, num_electrons, identity, rho)	
 	
 	test.rhs(beta, rho, H, identity)
-	results = test.zvode(nsteps)
-	print(np.linalg.eigvalsh(results[0]))
-	print("Time to complete: %s" % results[1])
+	test.zvode(nsteps)
+	print(np.linalg.eigvalsh(test.rho))
 	

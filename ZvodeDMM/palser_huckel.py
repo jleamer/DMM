@@ -1,6 +1,7 @@
 import numpy as np
 from numba import njit
 from scipy import sparse
+from scipy.io import mmwrite, mmread
 from numba import njit
 from scipy import linalg
 import matplotlib.pyplot as plt
@@ -9,6 +10,16 @@ from cp_dmm import CP_DMM
 from gcp_dmm import GCP_DMM
 from cp_numba_class_test import CP_Numba
 from gcp_numba_class_test import GCP_Numba
+import sys
+
+sys.path.insert(1, '/home/jacob/Documents/DMM')
+
+# NT Poly
+from NTPoly.Build.python import NTPolySwig as NT
+
+# MPI Module
+from mpi4py import MPI
+comm = MPI.COMM_WORLD
 
 def generate_H(n_cutoff, size, beta, alpha):
 	'''
@@ -38,7 +49,9 @@ def generate_H(n_cutoff, size, beta, alpha):
 	offsets.extend(mainu_off)
 	offsets.extend(upper_off)
 	
-	H = sparse.diags(diags, offsets, format='coo', dtype=complex).toarray()
+	H = sparse.diags(diags, offsets, format='coo', dtype=complex)
+	mmwrite("hamiltonian.mtx", H)
+	H = H.toarray()
 	return H
 
 def palser_cp(num_electrons, H, nsteps):
@@ -167,45 +180,87 @@ if __name__ == '__main__':
 	alpha = 1
 	beta = pi/4
 	H = generate_H(n_cutoff, size, beta, alpha)
+	identity = np.identity(size, dtype=complex)
+	
+	#Run NTPoly's TRS4 method on our Hamiltonian
+	# Set up parameters
+	convergence_threshold = 1e-10
+	threshold = 1e-10
+	process_rows = 1
+	process_columns = 1
+	process_slices = 1
+	hamiltonian_file = "hamiltonian.mtx"
+	density_file = "density.mtx"
+
+	#Construct process grid
+	NT.ConstructGlobalProcessGrid(process_rows, process_columns, process_slices)
+	
+	#Setup solver parameters
+	solver_parameters = NT.SolverParameters()
+	solver_parameters.SetConvergeDiff(convergence_threshold)
+	solver_parameters.SetThreshold(threshold)
+	solver_parameters.SetVerbosity(False)
+
+	overlap = sparse.identity(size, format='coo', dtype='complex')
+	mmwrite("overlap", overlap)
+	ntpoly_hamiltonian = NT.Matrix_ps("hamiltonian.mtx")
+	ntpoly_overlap = NT.Matrix_ps("overlap.mtx")
+	Density = NT.Matrix_ps(ntpoly_hamiltonian.GetActualDimension())
+		
+	#Compute the density matrix
+	energy_value, chemical_potential = \
+			NT.DensityMatrixSolvers.PM(ntpoly_hamiltonian, ntpoly_overlap, num_electrons, Density, solver_parameters)
+	print("NTPoly mu: ", chemical_potential)
+
+	#Output density matrix
+	Density.WriteToMatrixMarket(density_file)
+	ntpoly_density = mmread(density_file).toarray()
+	NT.DestructGlobalProcessGrid()	
+
 
 	#Create classes and run zvode
 	cp_dmm = CP_DMM(H=H, dbeta=dbeta, num_electrons=num_electrons)
 	cp_dmm.zvode(nsteps)
 	cp_dmm.purify()
-	print(np.linalg.norm(cp_dmm.rho.dot(cp_dmm.rho) - cp_dmm.rho, np.inf))
+	print("CP Idempotency: ", str(np.linalg.norm(cp_dmm.rho.dot(cp_dmm.rho) - cp_dmm.rho, np.inf)))
+	cp_eigs = np.linalg.eigvalsh(cp_dmm.rho)
+	print("CP Energy: ", np.sum(cp_dmm.rho * H.T))
 	
 	gcp_dmm = GCP_DMM(H=H, dbeta=dbeta, mu=mu)
 	gcp_dmm.zvode(nsteps)
 	gcp_dmm.purify()
-
+	gcp_eigs = np.linalg.eigvalsh(gcp_dmm.rho)
+	
+	
 	#Create exact solution density matrix
 	# Note: numpy's sinc function multiplies the argument by pi
 	exact_rho = np.array([[0.5*np.sinc((i-j)/2) for i in range(size)] for j in range(size)])
 
-	#Exact density matrix via heaviside step function
-	scaled_H = mu*cp_dmm.identity.copy() - H
-	hs_rho = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
-
-	c = cp_dmm.rho.dot(cp_dmm.identity-cp_dmm.rho)
-	alpha = np.sum(H * c.T)/ c.trace()
-	scaled_H = alpha*cp_dmm.identity.copy() - H
-	cphs_rho = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
-
 	#Get palser's solutions	
 	palsercp_rho = palser_cp(num_electrons, H, nsteps)
-	print(np.linalg.norm(palsercp_rho.dot(palsercp_rho) - palsercp_rho, np.inf))
-	palsergcp_rho = palser_gcp(mu, H, nsteps)
+	print("Palser Idempotency: ", np.linalg.norm(palsercp_rho.dot(palsercp_rho) - palsercp_rho, np.inf))
+	pcp_eigs = np.linalg.eigvalsh(palsercp_rho)
+	print("Palser Energy: ", np.sum(palsercp_rho * H.T))
 
-	#Run numba class(es)
-	cp_test = CP_Numba(H, 0.0, dbeta, num_electrons, cp_dmm.identity.copy(), cp_dmm.rho.copy())
-	cp_test.rhs(0.0, cp_test.rho, H, cp_test.identity)
-	cp_test.zvode(nsteps)
-	cp_test.purify()
-	
-	gcp_test = GCP_Numba(H, 0.0, dbeta, mu, gcp_dmm.identity.copy(), gcp_dmm.rho.copy())
-	gcp_test.rhs(0.0, gcp_test.rho, H, gcp_test.identity)
-	gcp_test.zvode(nsteps)
-	gcp_test.purify()
+	palsergcp_rho = palser_gcp(mu, H, nsteps)
+	pgcp_eigs = np.linalg.eigvalsh(palsergcp_rho)
+
+	#Exact density matrix via heaviside step function
+	#Compare mu for palser cp and our cp methods	
+	temp = palsercp_rho.dot(identity - palsercp_rho)
+	p_alpha = np.sum(H*temp.T)/temp.trace()
+	print("Palser mu: ", str(p_alpha))
+	scaled_H = p_alpha*identity-H
+	p_alpha_ex = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
+
+	temp = cp_dmm.rho.dot(identity - cp_dmm.rho)
+	alpha = np.sum(H*temp.T)/temp.trace()
+	scaled_H = alpha*identity-H
+	cphs_rho = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
+	print("Our mu: ", str(alpha))
+
+	scaled_H = mu*identity - H
+	hs_rho = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
 
 	#Plot exact solution
 	plt.figure(1)
@@ -214,10 +269,11 @@ if __name__ == '__main__':
 	plt.xlabel('|i-j|')
 	plt.title("CP Comparisons")
 	#plt.plot(exact_rho[0][:11], label='Exact')
-	plt.plot(cp_dmm.rho[0][:11].real, label='CP')
+	plt.plot(cp_dmm.rho[0][:11].real, 's', label='CP')
 	plt.plot(palsercp_rho[0][:11].real, 'o', label='Palser CP')
-	plt.plot(cp_test.rho[0][:11].real, '^', label='Numba CP')
 	plt.plot(cphs_rho[0][:11].real, '*-', label='CP HS Exact')
+	plt.plot(p_alpha_ex[0][:11].real, 'o-', label="Palser HS Exact")
+	plt.plot(ntpoly_density[0][:11].real, 'k', label="NTPoly")
 	#plt.plot(np.zeros(11), 'k')
 	plt.legend(numpoints=1)
 
@@ -228,46 +284,17 @@ if __name__ == '__main__':
 	plt.title('GCP Comparisons')
 	plt.plot(gcp_dmm.rho[0][:11].real, label='GCP')
 	plt.plot(palsergcp_rho[0][:11].real, 'o', label='Palser GCP')
-	plt.plot(gcp_test.rho[0][:11].real, '^', label='Numba GCP')
 	plt.plot(hs_rho[0][:11].real, '*-', label='GCP HS Exact')
 	plt.legend(numpoints=1)
 	
 	plt.figure(3)
-	plt.subplot(131)
-	plt.title('Numba CP')
-	plt.ylabel('P_j')
-	plt.xlabel('P_i')
-	plt.imshow(cp_test.rho.real)
-
-	plt.subplot(132)
-	plt.title('Palser CP')
-	plt.xlabel('P_i')
-	plt.imshow(palsercp_rho.real, label='Palser CP')
-
-	plt.subplot(133)
-	plt.title('HS Exact')
-	plt.xlabel('P_i')
-	plt.imshow(cphs_rho.real)
-	plt.colorbar()
-
-	plt.figure(4)
-	plt.subplot(131)
-	plt.title('Numba GCP')
-	plt.ylabel('P_j')
-	plt.xlabel('P_i')
-	plt.imshow(gcp_test.rho.real)
+	plt.title("CP Eigs")
+	plt.xlabel("Energy")
+	plt.ylabel("Population")
+	plt.plot(cp_dmm.E, cp_eigs[::-1], '*', label='CP')
+	plt.plot(cp_dmm.E, pcp_eigs[::-1], '^-', label='Palser CP')
+	plt.plot(cp_dmm.E, cp_dmm.get_exact_pop(mu=alpha.real), 'k', label='Exact')
+	plt.legend(numpoints=1)
 	
-	plt.subplot(132)
-	plt.title('Palser GCP')
-	plt.xlabel('P_i')
-	plt.imshow(palsergcp_rho.real)
-	
-	plt.subplot(133)
-	plt.title('HS Exact')
-	plt.xlabel('P_i')
-	plt.imshow(hs_rho.real)
-	plt.colorbar()
-	
-	plt
 	plt.show()
 	

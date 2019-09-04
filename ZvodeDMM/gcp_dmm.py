@@ -51,6 +51,7 @@ class GCP_DMM(DMM):
 			steps += 1
 		print("GCP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
+		self.beta = solver.t
 		return self
 
 

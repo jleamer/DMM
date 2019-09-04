@@ -54,6 +54,7 @@ class CP_DMM(DMM):
 			steps += 1
 		print("CP_Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
+		self.beta = solver.t
 		return self
 
 if __name__ == '__main__':

@@ -48,11 +48,16 @@ class DMM:
 		#Save energy eigvenvalues for later analysis
 		self.E = linalg.eigvalsh(self.H)
 	
-	def get_exact_pop(self):
+	def get_exact_pop(self, **kwargs):
 		'''
 		:returns: the exact Fermi-Dirac population distribution
 		'''
-		return 1 / (1 + np.exp(self.beta*(self.E - self.mu)))
+		if 'mu' in kwargs:
+			mu = kwargs['mu']
+		else:
+			mu = self.mu
+		print(self.beta)
+		return 1 / (1 + np.exp(self.beta*(self.E - mu)))
 
 	def purify(self):
 		'''
