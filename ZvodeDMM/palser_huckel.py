@@ -215,6 +215,7 @@ if __name__ == '__main__':
 	#Output density matrix
 	Density.WriteToMatrixMarket(density_file)
 	ntpoly_density = mmread(density_file).toarray()
+	ntcp_eigs = np.linalg.eigvalsh(ntpoly_density)
 	NT.DestructGlobalProcessGrid()	
 
 
@@ -291,10 +292,19 @@ if __name__ == '__main__':
 	plt.title("CP Eigs")
 	plt.xlabel("Energy")
 	plt.ylabel("Population")
-	plt.plot(cp_dmm.E, cp_eigs[::-1], '*', label='CP')
-	plt.plot(cp_dmm.E, pcp_eigs[::-1], '^-', label='Palser CP')
+	plt.plot(cp_dmm.E, cp_eigs[::-1], '*-', label='CP')
+	plt.plot(cp_dmm.E, pcp_eigs[::-1], '^', label='Palser CP')
+	plt.plot(cp_dmm.E, ntcp_eigs[::-1], 'o-', label='NTPoly CP')
 	plt.plot(cp_dmm.E, cp_dmm.get_exact_pop(mu=alpha.real), 'k', label='Exact')
 	plt.legend(numpoints=1)
 	
+	plt.figure(4)
+	plt.title("GCP Eigs")
+	plt.xlabel("Energy")
+	plt.ylabel("Population")
+	plt.plot(gcp_dmm.E, gcp_eigs[::-1], '*-', label='GCP')
+	plt.plot(gcp_dmm.E, pgcp_eigs[::-1], '^', label='Palser GCP')
+	plt.plot(gcp_dmm.E, gcp_dmm.get_exact_pop(), 'k', label='Exact')
+	plt.legend(numpoints=1)
 	plt.show()
 	

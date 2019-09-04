@@ -1,5 +1,7 @@
 from pyscf import gto, dft
 import numpy
+from scipy.io import mmwrite, mmread
+from scipy import sparse
 
 '''
 A simple example to run DFT calculation.
@@ -28,6 +30,7 @@ mf.analyze()
 
 # Get the converged density matrix (it generates the density matrix)
 dm = mf.make_rdm1()
+mmwrite('dft_density.mtx', sparse.coo_matrix(dm))
 
 
 # Get the nuclear-nuclear repulsion energy
@@ -45,9 +48,13 @@ print('Total dft energy: {}'.format(tot_e))
 index = int(mol.nelectron/2)
 mu = (mf.mo_energy[index] + mf.mo_energy[index - 1]) / 2.
 print('Chemical Potential: ', str(mu))
+f = open('dft_mu.txt', 'w+')
+f.write(str(mu))
+f.close()
 
-# get the overlap matrix
-# ovlp = mf.get_ovlp()
+# get the overlap matrix and print to file
+ovlp = mf.get_ovlp()
+mmwrite('dft_overlap.mtx', sparse.coo_matrix(ovlp))
 
 # Full fock matrix is sum of h1e and vhf
 fock = h1e + vhf
@@ -57,4 +64,7 @@ fock_direct = mf.get_fock(dm=dm)
 
 # Check that ways to get the fock matrix are the same
 assert(numpy.allclose(fock_direct,fock))
+
+#Write fock matrix to file
+mmwrite('fock', sparse.coo_matrix(fock))
 
