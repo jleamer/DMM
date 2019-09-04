@@ -254,8 +254,7 @@ if __name__ == '__main__':
 	scaled_H = p_alpha*identity-H
 	p_alpha_ex = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
 
-	temp = cp_dmm.rho.dot(identity - cp_dmm.rho)
-	alpha = np.sum(H*temp.T)/temp.trace()
+	alpha = cp_dmm.get_mu()
 	scaled_H = alpha*identity-H
 	cphs_rho = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
 	print("Our mu: ", str(alpha))

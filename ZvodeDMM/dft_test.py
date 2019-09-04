@@ -69,7 +69,18 @@ if __name__ == '__main__':
 	ntcp_eigs = np.linalg.eigvalsh(ntpoly_density)
 	NT.DestructGlobalProcessGrid()
 
-	
+
+	#Implement classes and run zvode
+	dbeta = 0.003
+	nsteps = 1000
+
+	cp_dmm = CP_DMM(H=H, dbeta=dbeta, num_electrons=num_electrons)
+	cp_dmm.zvode(nsteps)
+	cp_dmm.purify()
+
+	gcp_dmm = GCP_DMM(H=H, dbeta=dbeta, mu=dft_mu)
+	gcp_dmm.zvode(nsteps)
+	gcp_dmm.purify()
 	
 	#Plot density matrices
 	plt.figure(1)

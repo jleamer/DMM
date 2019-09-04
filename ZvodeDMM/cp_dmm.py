@@ -56,6 +56,14 @@ class CP_DMM(DMM):
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 		self.beta = solver.t
 		return self
+	
+	def get_mu(self):
+		'''
+		This function calculates the chemical potential of the system
+		:returns: the chemical potential, mu
+		'''
+		temp = self.rho.dot(self.identity - self.rho)
+		return np.sum(self.H*temp.T)/temp.trace()
 
 if __name__ == '__main__':
 	H = np.random.rand(100,100) + 1j*np.random.rand(100,100)
