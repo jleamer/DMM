@@ -77,6 +77,8 @@ if __name__ == '__main__':
 	cp_dmm = CP_DMM(H=H, dbeta=dbeta, num_electrons=num_electrons)
 	cp_dmm.zvode(nsteps)
 	cp_dmm.purify()
+	alpha = cp_dmm.get_mu()
+	print("CP mu: ", alpha)
 
 	gcp_dmm = GCP_DMM(H=H, dbeta=dbeta, mu=dft_mu)
 	gcp_dmm.zvode(nsteps)
@@ -85,6 +87,27 @@ if __name__ == '__main__':
 	#Plot density matrices
 	plt.figure(1)
 	
+	plt.subplot(131)
+	plt.title('DFT Density')
+	plt.ylabel('j')
+	plt.xlabel('i')
+	plt.imshow(dft_density)
+	
+	plt.subplot(132)
+	plt.xlabel('i')
+	plt.title('NTPoly Density')
+	plt.imshow(ntpoly_density)
+
+	plt.subplot(133)
+	plt.xlabel('i')
+	plt.title('CP Density')
+	plt.imshow(cp_dmm.rho.real)
+
+	plt.gcf().subplots_adjust(right=0.8, left=0.1)
+	cbax = plt.gcf().add_axes([0.85, 0.15, 0.05, 0.7])
+	plt.colorbar(cax=cbax)
+
+	plt.figure(2)
 	plt.subplot(121)
 	plt.title('DFT Density')
 	plt.ylabel('j')
@@ -92,11 +115,11 @@ if __name__ == '__main__':
 	plt.imshow(dft_density)
 	
 	plt.subplot(122)
+	plt.title('GCP Density')
 	plt.xlabel('i')
-	plt.title('NTPoly Density')
-	plt.imshow(ntpoly_density)
+	plt.imshow(gcp_dmm.rho.real)
 	
 	plt.gcf().subplots_adjust(right=0.8)
-	cbax = plt.gcf().add_axes([0.85, 0.15, 0.05, 0.7])
-	plt.colorbar(cax=cbax)
+	cbax2 = plt.gcf().add_axes([0.85, 0.15, 0.05, 0.7])
+	plt.colorbar(cax=cbax2)
 	plt.show()

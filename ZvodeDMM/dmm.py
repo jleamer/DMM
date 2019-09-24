@@ -56,7 +56,6 @@ class DMM:
 			mu = kwargs['mu']
 		else:
 			mu = self.mu
-		print(self.beta)
 		return 1 / (1 + np.exp(self.beta*(self.E - mu)))
 
 	def purify(self):

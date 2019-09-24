@@ -2,6 +2,8 @@ from pyscf import gto, dft
 import numpy
 from scipy.io import mmwrite, mmread
 from scipy import sparse
+from scipy import linalg
+import matplotlib.pyplot as plt
 
 '''
 A simple example to run DFT calculation.
@@ -64,6 +66,17 @@ fock_direct = mf.get_fock(dm=dm)
 
 # Check that ways to get the fock matrix are the same
 assert(numpy.allclose(fock_direct,fock))
+
+# Check that [S^-1, Hcore] = 0?
+ovlp_inv = linalg.inv(ovlp)
+diff_s = ovlp_inv - ovlp
+com_H = h1e.dot(ovlp_inv) - ovlp_inv.dot(h1e)
+print(linalg.eigvalsh(ovlp))
+
+plt.subplot(111)
+plt.imshow(com_H)
+plt.colorbar()
+plt.show()
 
 #Write fock matrix to file
 mmwrite('fock', sparse.coo_matrix(fock))

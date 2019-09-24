@@ -39,7 +39,7 @@ def generate_H(n_cutoff, size, beta, alpha):
 
 	lower_off = [-size+i+1 for i in range(n_cutoff)]
 	mainl_off = [-n_cutoff+i for i in range(n_cutoff)]
-	main = [size]
+	main = [0]
 	mainu_off = [i+1 for i in range(n_cutoff)]
 	upper_off = [size-n_cutoff+i for i in range(n_cutoff)]
 	offsets = []
@@ -142,9 +142,9 @@ if __name__ == '__main__':
 	
 	#Set up the initial parameters for the classes
 	beta = 0.0
-	dbeta = 0.003
+	dbeta = 0.03
 	nsteps = 1000
-	num_electrons = 5
+	num_electrons = 16
 	mu = -0.09
 
 	#Set up the hamiltonian
@@ -173,12 +173,15 @@ if __name__ == '__main__':
 	#	The exact expression for the density matrix of such a systems is:
 	#		rho_ij = 0.5 * sinc[(i-j)*pi/2]
 	#
+	#	We use ethylene as an example here
+	#		alpha = -11.4 eV
+	#		beta = 3 eV (~65 kcal/mol)
 	##############################################################
 
 	size = 100
-	n_cutoff = 9
-	alpha = 1
-	beta = pi/4
+	n_cutoff = 1
+	alpha = -11.4
+	beta = 3
 	H = generate_H(n_cutoff, size, beta, alpha)
 	identity = np.identity(size, dtype=complex)
 	
@@ -248,8 +251,9 @@ if __name__ == '__main__':
 
 	#Exact density matrix via heaviside step function
 	#Compare mu for palser cp and our cp methods	
-	temp = palsercp_rho.dot(identity - palsercp_rho)
-	p_alpha = np.sum(H*temp.T)/temp.trace()
+	#temp = palsercp_rho.dot(identity - palsercp_rho)
+	#p_alpha = np.sum(H*temp.T)/temp.trace()
+	p_alpha = np.trace(H)/size
 	print("Palser mu: ", str(p_alpha))
 	scaled_H = p_alpha*identity-H
 	p_alpha_ex = linalg.funm(scaled_H, lambda _: np.heaviside(_.real, 0.5))
