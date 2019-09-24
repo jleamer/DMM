@@ -3,6 +3,7 @@ from numba import jit
 from types import MethodType, FunctionType
 from scipy import linalg, sparse
 from scipy.integrate import ode
+import matplotlib.pyplot as plt
 from dmm import DMM
 import time
 
@@ -44,7 +45,7 @@ class CP_DMM(DMM):
 		'''
 		This function implements scipy's complex valued ordinary differential equation (ZVODE) using the rhs function above
 			:param nsteps:	the number of steps to propagate beta
-			:returns: 		the density matrix after propagating through beta
+			:returns: 		self
 		'''
 		solver = ode(self.rhs).set_integrator('zvode', method = 'bdf')
 		solver.set_initial_value(self.rho.reshape(-1), self.beta).set_f_params(self.H, self.identity)
@@ -56,7 +57,59 @@ class CP_DMM(DMM):
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 		self.beta = solver.t
 		return self
+
+	def rk4(self, nsteps):
+		'''
+		This function implements an adaptive 4th order Runge-Kutta method using this class's rhs function
+		:param nsteps:	the number of steps to propagate beta
+		:returns: 		self
+		'''
+
+		#######################################################
+		#
+		#	The method is:
+		#
+		#		rho(beta + dbeta) = rho(beta) + (1/6)*dbeta*(k1 + 2k2 + 2k3 + k4)
+		#
+		#	with
+		#		 f(rho) = K.rho + rho.K^{\dagger}
+		#		 K = -0.5*(H-mu)(I-rho)
+		#		 k1 = f(rho)
+        #        k2 = f(rho + 0.5*dbeta*k1)
+        #        k3 = f(rho + 0.5*dbeta*k2)
+        #        k4 = f(rho + dbeta*k3)
+		#
+		#######################################################
+		
+		for i in range(nsteps):
+			#First make a copy of rho
+			rhocopy = self.rho.copy()
+			rows = rhocopy.shape[0]
+		
+			#k1
+			k1 = self.rhs(self.beta, rhocopy, self.H, self.identity)
+			k1 = k1.reshape(rows, rows)
+
+			#k2
+			rhotemp = rhocopy + 0.5 * self.dbeta * k1
+			k2 = self.rhs(self.beta, rhotemp, self.H, self.identity)
+			k2 = k2.reshape(rows, rows)
 	
+			#k3
+			rhotemp = rhocopy + 0.5 * self.dbeta * k2
+			k3 = self.rhs(self.beta, rhotemp, self.H, self.identity)
+			k3 = k3.reshape(rows, rows)
+
+			#k4
+			rhotemp = rhocopy + self.dbeta*k3
+			k4 = self.rhs(self.beta, rhotemp, self.H, self.identity)
+			k4 = k4.reshape(rows, rows)
+
+			self.beta += self.dbeta
+			self.rho += (1/6)*self.dbeta*(k1+2*k2+2*k3+k4)
+
+		return self
+
 	def get_mu(self):
 		'''
 		This function calculates the chemical potential of the system
@@ -72,7 +125,21 @@ if __name__ == '__main__':
 	num_steps = 1000
 	
 	dmm = CP_DMM(H=H, dbeta=dbeta, num_electrons=num_electrons)
-	start = time.time()
-	print(np.linalg.eigvalsh(dmm.zvode(num_steps)))
-	end = time.time()
-	print("Time to complete: %s" % (end-start))
+	dmm.zvode(num_steps)
+	dmm.purify()
+	zvode_eig = np.linalg.eigvalsh(dmm.rho)
+	
+	dmm2 = CP_DMM(H=H, dbeta=dbeta, num_electrons=num_electrons)
+	dmm2.rk4(num_steps)
+	dmm2.purify()
+	rk4_eig = np.linalg.eigvalsh(dmm.rho)
+
+	plt.subplot(111)
+	plt.ylabel("Population")
+	plt.xlabel("Energy")
+	plt.plot(dmm.E, zvode_eig[::-1], label='Zvode')
+	plt.plot(dmm.E, rk4_eig[::-1], 'o', label='RK4')
+	plt.legend(numpoints=1)
+	plt.show()
+
+
