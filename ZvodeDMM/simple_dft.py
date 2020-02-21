@@ -81,3 +81,4 @@ plt.show()
 #Write fock matrix to file
 mmwrite('fock', sparse.coo_matrix(fock))
 
+#Now we want to test that our DMM method arrives at the same density matrix
