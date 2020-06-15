@@ -2,9 +2,11 @@ import numpy as np
 from numba import jit
 from types import MethodType, FunctionType
 from scipy import linalg, sparse
+from scipy.io import mmread, mmwrite
 from scipy.integrate import ode
 import matplotlib.pyplot as plt
 from dmm import DMM
+
 
 class GCP_DMM(DMM):
 	def __init__(self, **kwargs):
@@ -20,22 +22,40 @@ class GCP_DMM(DMM):
 		self.rho = 0.5 * self.identity
 
 	def rhs(self, beta, rho, H, identity, mu):
-		'''
-		This function implements the cp version of the rhs of the derivative expression 
+		"""
+		This function implements the gcp version of the rhs of the derivative expression
 		for use in the python ODE Solvers
 			:param beta:		time step that the function is being called on; not actually used
 			:param rho:			the matrix that is being propagated
 			:param H:			Hamiltonian operator
 			:param identity:	the identity matrix
 			:param mu:			the chemical potential
-		
+
 			:return f: 			the derivative of the matrix
-		'''
+		"""
 		rows = int(np.sqrt(rho.size))
 		rho = rho.reshape(rows,rows)
 		scaledH = -0.5*(H - mu * identity)
 		K = scaledH.dot(identity - rho)
 		f = K.dot(rho) + rho.dot(K.conj().T)
+		return f.reshape(-1)
+
+	def non_orth_rhs(self, beta, P, H, identity, mu):
+		"""
+		This function implements the gcp version of the rhs of the derivative expression
+		for use in the python ODE solvers for non-orthonormal bases
+		:param beta:
+		:param rho:
+		:param H:
+		:param identity:
+		:param mu:
+		:return:
+		"""
+		rows = int(np.sqrt(P.size))
+		P = P.reshape(rows, rows)
+		scaledH = -0.5*(self.inv_overlap.dot(H) - mu*identity)
+		K = (identity - self.inv_overlap.dot(P)).dot(scaledH)
+		f = P.dot(K) + K.conj().T.dot(P)
 		return f.reshape(-1)
 	
 	def zvode(self, nsteps):
@@ -45,6 +65,23 @@ class GCP_DMM(DMM):
 			:returns: 		the density matrix after propagating through beta
 		'''
 		solver = ode(self.rhs).set_integrator('zvode', method = 'bdf')
+		solver.set_initial_value(self.rho.reshape(-1), self.beta).set_f_params(self.H, self.identity, self.mu)
+		steps = 0
+		while solver.successful() and solver.t < self.dbeta*nsteps:
+			solver.integrate(solver.t + self.dbeta)
+			steps += 1
+		print("GCP Zvode steps: ", str(steps))
+		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
+		self.beta = solver.t
+		return self
+
+	def no_zvode(self, nsteps):
+		'''
+		This function implements scipy's complex valued ordinary differential equation (ZVODE) using the rhs function above
+			:param nsteps:	the number of steps to propagate beta
+			:returns: 		the density matrix after propagating through beta
+		'''
+		solver = ode(self.non_orth_rhs).set_integrator('zvode', method = 'bdf')
 		solver.set_initial_value(self.rho.reshape(-1), self.beta).set_f_params(self.H, self.identity, self.mu)
 		steps = 0
 		while solver.successful() and solver.t < self.dbeta*nsteps:
@@ -108,7 +145,7 @@ class GCP_DMM(DMM):
 		return self
 
 if __name__ == '__main__':
-	H = np.random.rand(100,100) + 1j*np.random.rand(100,100)
+	H = np.random.rand(11,11) + 1j*np.random.rand(11,11)
 	dbeta = 0.003
 	mu = -0.09
 	num_steps = 1000
@@ -121,12 +158,19 @@ if __name__ == '__main__':
 	dmm2 = GCP_DMM(H=H, dbeta=dbeta, mu=mu)
 	dmm2.rk4(num_steps)
 	#dmm2.purify()
-	rk4_eig = np.linalg.eigvalsh(dmm.rho)
+	rk4_eig = np.linalg.eigvalsh(dmm2.rho)
+
+	ovlp = mmread("dft_overlap.mtx").toarray()
+	dmm3 = GCP_DMM(H=H, dbeta=dbeta, mu=mu, ovlp=ovlp)
+	dmm3.no_zvode(num_steps)
+	no_zvode_eig = np.linalg.eigvalsh(dmm3.rho)
+
 
 	plt.subplot(111)
 	plt.ylabel("Population")
 	plt.xlabel("Energy")
 	plt.plot(dmm.E, zvode_eig[::-1], label='Zvode')
 	plt.plot(dmm.E, rk4_eig[::-1], 'o', label='RK4')
+	plt.plot(dmm.E, no_zvode_eig[::-1], '*', label='NO Zvode')
 	plt.legend(numpoints=1)
 	plt.show()

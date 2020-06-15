@@ -37,6 +37,11 @@ class DMM:
 		except AttributeError:
 			self.beta = 0.0
 
+		try:
+			self.ovlp
+		except AttributeError:
+			self.ovlp = np.identity(self.H.shape[0], dtype=self.H.dtype)
+
 
 		#Save the identity matrix
 		self.identity = np.identity(self.H.shape[0], dtype=self.H.dtype)
@@ -47,6 +52,10 @@ class DMM:
 
 		#Save energy eigvenvalues for later analysis
 		self.E = linalg.eigvalsh(self.H)
+
+		#Compute the inverse of the overlap matrix
+		#	For now just using the built in inversion methods in numpy
+		self.inv_overlap = np.linalg.inv(self.ovlp)
 	
 	def get_exact_pop(self, **kwargs):
 		'''
