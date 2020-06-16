@@ -41,6 +41,26 @@ class CP_DMM(DMM):
 		f += f.conj().T
 		return f.reshape(-1)
 
+	# TODO: Make sure that this expression is correct
+	def non_orth_rhs(self, beta, P, H, identity):
+		'''
+		This function implements a non-orthogonal version of the cp rhs derivative above
+		:param beta: 		inverse temperature step; not actually used
+		:param P: 		the matrix that is being propagated
+		:param H: 			Hamiltonian operator
+		:param identity: 	the identity matrix
+		:return f:			the derivative of the matrix
+		'''
+
+		rows = int(np.sqrt(P.size))
+		P = P.reshape(rows, rows)
+		c = P.dot(identity-P)
+		alpha = np.sum(H*c.T)/c.trace()
+		scaledH = -0.5*(self.inv_overlap.dot(H) - alpha*identity)
+		K = (identity - self.inv_overlap.dot(P)).dot(scaledH)
+		f = P.dot(K) + K.conj().T.dot(P)
+		return f.reshape(-1)
+
 	def zvode(self, nsteps):
 		'''
 		This function implements scipy's complex valued ordinary differential equation (ZVODE) using the rhs function above
@@ -54,6 +74,23 @@ class CP_DMM(DMM):
 			solver.integrate(solver.t + self.dbeta)
 			steps += 1
 		print("CP_Zvode steps: ", str(steps))
+		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
+		self.beta = solver.t
+		return self
+
+	def no_zvode(self, nsteps):
+		'''
+		This function implements scipy's complex valued ordinary differential equation (ZVODE) using the rhs function above
+			:param nsteps:	the number of steps to propagate beta
+			:returns: 		the density matrix after propagating through beta
+		'''
+		solver = ode(self.non_orth_rhs).set_integrator('zvode', method = 'bdf')
+		solver.set_initial_value(self.rho.reshape(-1), self.beta).set_f_params(self.H, self.identity)
+		steps = 0
+		while solver.successful() and solver.t < self.dbeta*nsteps:
+			solver.integrate(solver.t + self.dbeta)
+			steps += 1
+		print("GCP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 		self.beta = solver.t
 		return self

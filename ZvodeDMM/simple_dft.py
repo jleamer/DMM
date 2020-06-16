@@ -4,6 +4,10 @@ from scipy.io import mmwrite, mmread
 from scipy import sparse
 from scipy import linalg
 import matplotlib.pyplot as plt
+from ZvodeDMM.dmm import DMM
+from ZvodeDMM.gcp_dmm import GCP_DMM
+from ZvodeDMM.cp_dmm import CP_DMM
+
 
 '''
 A simple example to run DFT calculation.
@@ -67,18 +71,63 @@ fock_direct = mf.get_fock(dm=dm)
 # Check that ways to get the fock matrix are the same
 assert(numpy.allclose(fock_direct,fock))
 
-# Check that [S^-1, Hcore] = 0?
-ovlp_inv = linalg.inv(ovlp)
-diff_s = ovlp_inv - ovlp
-com_H = h1e.dot(ovlp_inv) - ovlp_inv.dot(h1e)
-print(linalg.eigvalsh(ovlp))
-
-plt.subplot(111)
-plt.imshow(com_H)
-plt.colorbar()
-plt.show()
-
 #Write fock matrix to file
 mmwrite('fock', sparse.coo_matrix(fock))
 
 #Now we want to test that our DMM method arrives at the same density matrix
+# first get the inverse overlap matrix
+inv_ovlp = linalg.inv(ovlp)
+
+# propagate using GCP DMM
+gcp = GCP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, mu=mu)
+gcp.no_zvode(1000)
+
+# get exact DM
+P = ovlp@linalg.inv(gcp.identity + linalg.expm(gcp.beta*(inv_ovlp@gcp.H-gcp.mu*gcp.identity)))
+
+# Plot each
+fig1 = plt.figure(1)
+plt.subplot(131)
+plt.imshow(gcp.rho.real, origin='lower')
+plt.colorbar()
+plt.ylabel('i')
+plt.xlabel('j')
+plt.title("DMM (real)")
+
+plt.subplot(132)
+plt.imshow(P.real, origin='lower')
+plt.colorbar()
+plt.xlabel('j')
+plt.title("Exact (real)")
+
+plt.subplot(133)
+plt.imshow(dm.real, origin='lower')
+plt.colorbar()
+plt.ylabel('j')
+plt.title("DFT (real)")
+
+
+# Repeat for cp case
+cp = CP_DMM(H=h1e, dbeta = 0.003, ovlp=ovlp, num_electrons=10)
+cp.no_zvode(1000)
+
+fig2 = plt.figure(2)
+plt.subplot(131)
+plt.imshow(cp.rho.real, origin='lower')
+plt.colorbar()
+plt.ylabel('i')
+plt.xlabel('j')
+plt.title("DMM (real)")
+
+plt.subplot(132)
+plt.imshow(P.real, origin='lower')
+plt.colorbar()
+plt.xlabel('j')
+plt.title("Exact (real)")
+
+plt.subplot(133)
+plt.imshow(dm.real, origin='lower')
+plt.colorbar()
+plt.ylabel('j')
+plt.title("DFT (real)")
+plt.show()
