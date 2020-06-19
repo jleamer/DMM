@@ -74,60 +74,100 @@ assert(numpy.allclose(fock_direct,fock))
 #Write fock matrix to file
 mmwrite('fock', sparse.coo_matrix(fock))
 
+print("DFT trace: ", dm.trace())
+
 #Now we want to test that our DMM method arrives at the same density matrix
 # first get the inverse overlap matrix
 inv_ovlp = linalg.inv(ovlp)
 
-# propagate using GCP DMM
+# propagate using GCP DMM zvode
 gcp = GCP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, mu=mu)
 gcp.no_zvode(1000)
+print("GCP Zvode trace: ", gcp.rho.trace())
+#gcp.purify()
+
+#propagate using GCP DMM rk4
+gcp2 = GCP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, mu=mu)
+gcp2.non_orth_rk4(1000)
+print("GCP RK4 trace: ", gcp2.rho.trace())
+#gcp2.purify()
+
+fig1 = plt.figure(1)
+plt.subplot(111)
+plt.plot([i for i in range(len(gcp.num_electrons))], gcp.num_electrons, 'r-', label='Zvode')
+plt.plot([i for i in range(len(gcp2.num_electrons))], gcp2.num_electrons, 'b--', label='RK4')
+plt.title("Tr(P) for GCP")
+plt.legend(numpoints=1)
 
 # get exact DM
 P = ovlp@linalg.inv(gcp.identity + linalg.expm(gcp.beta*(inv_ovlp@gcp.H-gcp.mu*gcp.identity)))
+print("Exact trace: ", P.trace())
 
 # Plot each
-fig1 = plt.figure(1)
-plt.subplot(131)
+fig2 = plt.figure(2)
+plt.subplot(221)
 plt.imshow(gcp.rho.real, origin='lower')
 plt.colorbar()
 plt.ylabel('i')
 plt.xlabel('j')
-plt.title("DMM (real)")
+plt.title("Zvode (real)")
 
-plt.subplot(132)
+plt.subplot(222)
+plt.imshow(gcp2.rho.real, origin='lower')
+plt.colorbar()
+plt.xlabel('j')
+plt.title("RK4 (real)")
+
+plt.subplot(223)
 plt.imshow(P.real, origin='lower')
 plt.colorbar()
+plt.ylabel('i')
 plt.xlabel('j')
 plt.title("Exact (real)")
 
-plt.subplot(133)
+plt.subplot(224)
 plt.imshow(dm.real, origin='lower')
 plt.colorbar()
-plt.ylabel('j')
+plt.xlabel('j')
 plt.title("DFT (real)")
 
-
 # Repeat for cp case
-cp = CP_DMM(H=h1e, dbeta = 0.003, ovlp=ovlp, num_electrons=10)
+cp = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=10)
 cp.no_zvode(1000)
+#cp.purify()
+print("CP Zvode trace: ", cp.rho.trace())
+print("CP Zvode chemical potential: ", cp.get_mu())
 
-fig2 = plt.figure(2)
-plt.subplot(131)
+cp2 = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=10)
+cp2.non_orth_rk4(1000)
+#cp2.purify()
+print("CP RK4 trace: ", cp2.rho.trace())
+print("CP RK4 chemical potential: ", cp2.get_mu())
+
+fig3 = plt.figure(3)
+plt.subplot(221)
 plt.imshow(cp.rho.real, origin='lower')
 plt.colorbar()
 plt.ylabel('i')
 plt.xlabel('j')
-plt.title("DMM (real)")
+plt.title("Zvode (real)")
 
-plt.subplot(132)
+plt.subplot(222)
+plt.imshow(cp2.rho.real, origin='lower')
+plt.colorbar()
+plt.xlabel('j')
+plt.title("RK4 (real)")
+
+plt.subplot(223)
 plt.imshow(P.real, origin='lower')
 plt.colorbar()
+plt.ylabel('i')
 plt.xlabel('j')
 plt.title("Exact (real)")
 
-plt.subplot(133)
+plt.subplot(224)
 plt.imshow(dm.real, origin='lower')
 plt.colorbar()
-plt.ylabel('j')
+plt.xlabel('j')
 plt.title("DFT (real)")
 plt.show()

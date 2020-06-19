@@ -20,6 +20,7 @@ class GCP_DMM(DMM):
 
 		#Create the initial density matrix, which is really just the identity matrix in this case
 		self.rho = 0.5 * self.identity
+		self.num_electrons = [self.rho.trace()]
 
 	def rhs(self, beta, rho, H, identity, mu):
 		"""
@@ -86,6 +87,7 @@ class GCP_DMM(DMM):
 		steps = 0
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
+			self.num_electrons.append(solver.y.reshape(self.rho.shape[0], self.rho.shape[0]).trace())
 			steps += 1
 		print("GCP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
@@ -94,7 +96,7 @@ class GCP_DMM(DMM):
 
 	def rk4(self, nsteps):
 		'''
-		This function implements an adaptive 4th order Runge-Kutta method using this class's rhs function
+		This function implements a 4th order Runge-Kutta method using this class's rhs function
 		:param nsteps:	the number of steps to propagate beta
 		:returns: 		self
 		'''
@@ -121,26 +123,63 @@ class GCP_DMM(DMM):
 			rows = rhocopy.shape[0]
 		
 			#k1
-			k1 = self.rhs(self.beta, rhocopy, self.H, self.identity, mu)
+			k1 = self.rhs(self.beta, rhocopy, self.H, self.identity, self.mu)
 			k1 = k1.reshape(rows,rows)
 
 			#k2
 			rhotemp = rhocopy + 0.5 * self.dbeta * k1
-			k2 = self.rhs(self.beta, rhotemp, self.H, self.identity, mu)
+			k2 = self.rhs(self.beta, rhotemp, self.H, self.identity, self.mu)
 			k2 = k2.reshape(rows, rows)
 	
 			#k3
 			rhotemp = rhocopy + 0.5 * self.dbeta * k2
-			k3 = self.rhs(self.beta, rhotemp, self.H, self.identity, mu)
+			k3 = self.rhs(self.beta, rhotemp, self.H, self.identity, self.mu)
 			k3 = k3.reshape(rows, rows)
 
 			#k4
 			rhotemp = rhocopy + self.dbeta*k3
-			k4 = self.rhs(self.beta, rhotemp, self.H, self.identity, mu)
+			k4 = self.rhs(self.beta, rhotemp, self.H, self.identity, self.mu)
 			k4 = k4.reshape(rows, rows)
 
 			self.beta += self.dbeta
 			self.rho += (1/6)*self.dbeta*(k1+2*k2+2*k3+k4)
+			self.num_electrons.append(self.rho.trace())
+
+		return self
+
+	def non_orth_rk4(self, nsteps):
+		'''
+		This function implements a 4th order Runge-Kutta method using the non-orthogonal rhs
+		:param nsteps: the number of steps to run
+		:return: self
+		'''
+		for i in range(nsteps):
+			# First make a copy of rho
+			rhocopy = self.rho.copy()
+			rows = rhocopy.shape[0]
+
+			# k1
+			k1 = self.non_orth_rhs(self.beta, rhocopy, self.H, self.identity, self.mu)
+			k1 = k1.reshape(rows,rows)
+
+			# k2
+			rhotemp = rhocopy + 0.5 * self.dbeta * k1
+			k2 = self.non_orth_rhs(self.beta, rhotemp, self.H, self.identity, self.mu)
+			k2 = k2.reshape(rows, rows)
+
+			# k3
+			rhotemp = rhocopy + 0.5 * self.dbeta * k2
+			k3 = self.non_orth_rhs(self.beta, rhotemp, self.H, self.identity, self.mu)
+			k3 = k3.reshape(rows, rows)
+
+			# k4
+			rhotemp = rhocopy + self.dbeta*k3
+			k4 = self.non_orth_rhs(self.beta, rhotemp, self.H, self.identity, self.mu)
+			k4 = k4.reshape(rows, rows)
+
+			self.beta += self.dbeta
+			self.rho += (1/6)*self.dbeta*(k1+2*k2+2*k3+k4)
+			self.num_electrons.append(self.rho.trace())
 
 		return self
 
@@ -164,7 +203,6 @@ if __name__ == '__main__':
 	dmm3 = GCP_DMM(H=H, dbeta=dbeta, mu=mu, ovlp=ovlp)
 	dmm3.no_zvode(num_steps)
 	no_zvode_eig = np.linalg.eigvalsh(dmm3.rho)
-
 
 	plt.subplot(111)
 	plt.ylabel("Population")

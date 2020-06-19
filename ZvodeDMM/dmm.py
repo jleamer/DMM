@@ -71,7 +71,9 @@ class DMM:
 		'''
 		:returns: self with rho made idempotent
 		'''
-		while True:
+		count = 0
+		while count < 100:
+			count += 1
 			rho_sq = self.rho.dot(self.rho)
 			rho_cu = self.rho.dot(rho_sq)
 

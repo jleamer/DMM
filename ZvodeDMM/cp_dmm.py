@@ -54,8 +54,9 @@ class CP_DMM(DMM):
 
 		rows = int(np.sqrt(P.size))
 		P = P.reshape(rows, rows)
-		c = P.dot(identity-P)
-		alpha = np.sum(H*c.T)/c.trace()
+		c = P.dot(identity-self.inv_overlap.dot(P))
+		d = H.dot(c)
+		alpha = np.sum(self.inv_overlap*d.T)/c.trace()
 		scaledH = -0.5*(self.inv_overlap.dot(H) - alpha*identity)
 		K = (identity - self.inv_overlap.dot(P)).dot(scaledH)
 		f = P.dot(K) + K.conj().T.dot(P)
@@ -90,7 +91,7 @@ class CP_DMM(DMM):
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
 			steps += 1
-		print("GCP Zvode steps: ", str(steps))
+		print("CP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 		self.beta = solver.t
 		return self
@@ -147,6 +148,42 @@ class CP_DMM(DMM):
 
 		return self
 
+	def non_orth_rk4(self, nsteps):
+		'''
+		This function implements a 4th order Runge Kutta method for the non-orthogonal rhs function
+		:param nsteps: the number of steps to run
+		:return: self
+		'''
+
+		for i in range(nsteps):
+			#First make a copy of rho
+			rhocopy = self.rho.copy()
+			rows = rhocopy.shape[0]
+
+			#k1
+			k1 = self.non_orth_rhs(self.beta, rhocopy, self.H, self.identity)
+			k1 = k1.reshape(rows, rows)
+
+			#k2
+			rhotemp = rhocopy + 0.5 * self.dbeta * k1
+			k2 = self.non_orth_rhs(self.beta, rhotemp, self.H, self.identity)
+			k2 = k2.reshape(rows, rows)
+
+			#k3
+			rhotemp = rhocopy + 0.5 * self.dbeta * k2
+			k3 = self.non_orth_rhs(self.beta, rhotemp, self.H, self.identity)
+			k3 = k3.reshape(rows, rows)
+
+			#k4
+			rhotemp = rhocopy + self.dbeta*k3
+			k4 = self.non_orth_rhs(self.beta, rhotemp, self.H, self.identity)
+			k4 = k4.reshape(rows, rows)
+
+			self.beta += self.dbeta
+			self.rho += (1/6)*self.dbeta*(k1+2*k2+2*k3+k4)
+
+		return self
+
 	def get_mu(self):
 		'''
 		This function calculates the chemical potential of the system
@@ -155,12 +192,21 @@ class CP_DMM(DMM):
 		temp = self.rho.dot(self.identity - self.rho)
 		return np.sum(self.H*temp.T)/temp.trace()
 
+	def no_get_mu(self):
+		'''
+		This function calculates the chemical potential of the system in a non-orthogonal basis
+		:return: the chemical potential, mu
+		'''
+		temp = self.rho.dot(self.identity - self.inv_overlap.dot(self.rho))
+		temp2 = self.H.dot(temp)
+		return np.sum(self.inv_overlap*temp2.T)/temp.trace()
+
 if __name__ == '__main__':
 	H = np.random.rand(100,100) + 1j*np.random.rand(100,100)
 	dbeta = 0.003
 	num_electrons = 5
 	num_steps = 1000
-	
+
 	dmm = CP_DMM(H=H, dbeta=dbeta, num_electrons=num_electrons)
 	dmm.zvode(num_steps)
 	dmm.purify()
@@ -169,7 +215,7 @@ if __name__ == '__main__':
 	dmm2 = CP_DMM(H=H, dbeta=dbeta, num_electrons=num_electrons)
 	dmm2.rk4(num_steps)
 	dmm2.purify()
-	rk4_eig = np.linalg.eigvalsh(dmm.rho)
+	rk4_eig = np.linalg.eigvalsh(dmm2.rho)
 
 	plt.subplot(111)
 	plt.ylabel("Population")
