@@ -19,6 +19,9 @@ class CP_DMM(DMM):
 
 		#Define the initial density matrix
 		self.rho = self.num_electrons/self.identity.trace() * self.identity
+		self.mu_list = [self.get_mu()]
+		self.no_mu_list = [self.no_get_mu()]
+
 
 	def rhs(self, beta, rho, H, identity):
 		'''
@@ -73,6 +76,7 @@ class CP_DMM(DMM):
 		steps = 0
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
+			self.mu_list.append(self.get_mu())
 			steps += 1
 		print("CP_Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
@@ -90,6 +94,8 @@ class CP_DMM(DMM):
 		steps = 0
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
+			self.mu_list.append(self.get_mu())
+			self.no_mu_list.append(self.no_get_mu())
 			steps += 1
 		print("CP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
@@ -145,6 +151,7 @@ class CP_DMM(DMM):
 
 			self.beta += self.dbeta
 			self.rho += (1/6)*self.dbeta*(k1+2*k2+2*k3+k4)
+			self.mu_list.append(self.get_mu())
 
 		return self
 
@@ -181,6 +188,8 @@ class CP_DMM(DMM):
 
 			self.beta += self.dbeta
 			self.rho += (1/6)*self.dbeta*(k1+2*k2+2*k3+k4)
+			self.mu_list.append(self.get_mu())
+			self.no_mu_list.append(self.no_get_mu())
 
 		return self
 
