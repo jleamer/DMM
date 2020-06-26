@@ -18,7 +18,9 @@ class CP_DMM(DMM):
 			raise AttributeError("Number of electrons need to be specified")
 
 		#Define the initial density matrix
-		self.rho = self.num_electrons/self.identity.trace() * self.identity
+		#self.rho = self.num_electrons/self.identity.trace() * self.identity
+		self.rho = self.num_electrons/self.ovlp.trace() * self.ovlp
+		#self.rho = 0.5 * self.ovlp
 		self.mu_list = [self.get_mu()]
 		self.no_mu_list = [self.no_get_mu()]
 
@@ -95,6 +97,7 @@ class CP_DMM(DMM):
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
 			self.mu_list.append(self.get_mu())
+			self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 			self.no_mu_list.append(self.no_get_mu())
 			steps += 1
 		print("CP Zvode steps: ", str(steps))

@@ -4,13 +4,15 @@ from types import MethodType, FunctionType
 from scipy import linalg, sparse
 from scipy.io import mmread, mmwrite
 from scipy.integrate import ode
+from scipy.linalg import eigh
 import matplotlib.pyplot as plt
-from dmm import DMM
+from ZvodeDMM.dmm import DMM
+from pyscf import gto, dft
 
 
 class GCP_DMM(DMM):
 	def __init__(self, **kwargs):
-		#Call general DMM constructor
+		# Call general DMM constructor
 		DMM.__init__(self, **kwargs)
 	
 		try:
@@ -18,9 +20,43 @@ class GCP_DMM(DMM):
 		except AttributeError:
 			raise AttributeError("Chemical potential needs to be specified")
 
-		#Create the initial density matrix, which is really just the identity matrix in this case
-		self.rho = 0.5 * self.identity
+		try:
+			self.mf
+		except AttributeError:
+			raise AttributeError("MF not specified from DFT")
+
+		# Create the initial density matrix
+		# self.rho = 0.5 * self.identity
+		self.rho = 0.5 * self.ovlp
 		self.num_electrons = [self.rho.trace()]
+		self.y = -1/4*(self.H + 0.01*self.rho - self.mu*self.ovlp)
+
+		"""
+		# Create the initial y for iteration
+		self.A = 0.062184
+		self.b = 3.72744
+		self.c = 12.9352
+		self.Q = np.sqrt(4*self.c-self.b**2)
+		self.x0 = -0.10498
+		self.rs = (3/(4*np.pi*self.rho.trace()))**(1/3)
+		self.x = np.sqrt(self.rs)
+
+		# Note that Hexc is vxld+vcld using LDA approximation
+		self.y0 = -1/4*(self.H + self.vxld()+self.vcld() - self.mu*self.ovlp)
+
+	def X(self, x):
+		return x**2 + self.b*x + self.c
+
+	def vxld(self):
+		return -(3*np.pi**2*self.rho.trace())**(1/3)/np.pi
+
+	def vcld(self):
+		tan_arg = self.Q/(2*self.x+self.b)
+		x_diff = self.x-self.x0
+		return self.A/2*(np.log(self.x**2/self.X(self.x)) + 2*self.b/self.Q*np.arctan(tan_arg) -\
+						self.b*self.x0/self.X(self.x0)*(np.log(x_diff**2/self.X(self.x)) + 2*(self.b+2*self.x0)/self.Q*np.arctan(tan_arg))) -\
+							self.A/6 * (self.c*x_diff-self.b*self.x*self.x0)/(x_diff*self.X(self.x))
+		"""
 
 	def rhs(self, beta, rho, H, identity, mu):
 		"""
@@ -58,6 +94,72 @@ class GCP_DMM(DMM):
 		K = (identity - self.inv_overlap.dot(P)).dot(scaledH)
 		f = P.dot(K) + K.conj().T.dot(P)
 		return f.reshape(-1)
+
+	def sc_rhs(self, beta, P, H, identity, mu, Hexc):
+		"""
+		This function implements the gcp version of the rhs of the derivative expression
+		for use in the python ODE solvers
+		:param beta:
+		:param P:
+		:param H:
+		:param identity:
+		:param mu:
+		:return:
+		"""
+		rows = int(np.sqrt(P.size))
+		P = P.reshape(rows, rows)
+		scaledH = -0.5*(self.inv_overlap.dot(H) + self.inv_overlap.dot(self.vxld()+self.vcld()))
+		return
+
+	def F(self, eigval):
+		return 1/(1+np.exp(eigval))
+
+
+	def deriv_Hexc(self):
+		return (self.mf.get_veff(self.mf.mol, self.rho + 0.01) - self.mf.get_veff(self.mf.mol, self.rho - 0.01))/0.01**2
+
+	def dkeq(self, eigvals, eigvecs, y, beta, P):
+		total = 0
+		rows = int(np.sqrt(y.size))
+		for i in range(rows):
+			for j in range(rows):
+				if i == j:
+					total += 1/(1+np.exp(eigvals[j]))**2 * np.exp(eigvals[j]) * eigvecs[j] * self.inv_overlap*self.deriv_Hexc() * y * eigvecs[j]
+
+				else:
+					total += (self.F(eigvals[i])-self.F(eigvals[j]))/(eigvals[i]-eigvals[j]) * eigvecs[i] * self.inv_overlap*self.deriv_Hexc() * y * eigvecs[j]
+
+		return total
+
+	def calc_ynext(self, beta, P, H, identity, mu, y):
+		rows = int(np.sqrt(P.size))
+		P = P.reshape(rows, rows)
+		Hexc = self.mf.get_veff(self.mf.mol, P)
+		scriptH = beta*(self.inv_overlap.dot(H) + self.inv_overlap.dot(Hexc) - mu*identity)
+		eigvals, eigvecs = eigh(scriptH, self.ovlp)
+
+		scaledH = -0.5*(self.inv_overlap.dot(H) + self.inv_overlap.dot(Hexc) - mu*identity)
+		K = (identity-self.inv_overlap.dot(P)).dot(scaledH)
+		f = P.dot(K) + K.conj().T.dot(P)
+
+		DK = 0.5*self.dkeq(eigvals, eigvecs, y, beta, P)
+
+		ynext = f + DK + DK.conj().T
+		return ynext
+
+	def test_rhs(self, dbeta, P, y):
+		"""
+		Function for testing self-consistent algorithm using an Hexc that we know analytically
+		:param beta:
+		:param P:
+		:param H:
+		:param identity:
+		:param mu:
+		:return:
+		"""
+
+		return P + dbeta*y
+
 	
 	def zvode(self, nsteps):
 		'''
