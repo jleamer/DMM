@@ -4,7 +4,7 @@ from types import MethodType, FunctionType
 from scipy import linalg, sparse
 from scipy.io import mmread, mmwrite
 from scipy.integrate import ode
-from scipy.linalg import eigh
+from scipy.linalg import eigh, eig
 import matplotlib.pyplot as plt
 from ZvodeDMM.dmm import DMM
 from pyscf import gto, dft
@@ -19,12 +19,12 @@ class GCP_DMM(DMM):
 			self.mu
 		except AttributeError:
 			raise AttributeError("Chemical potential needs to be specified")
-
+		'''
 		try:
 			self.mf
 		except AttributeError:
 			raise AttributeError("MF not specified from DFT")
-
+		'''
 		# Create the initial density matrix
 		# self.rho = 0.5 * self.identity
 		self.rho = 0.5 * self.ovlp
@@ -114,29 +114,61 @@ class GCP_DMM(DMM):
 	def F(self, eigval):
 		return 1/(1+np.exp(eigval))
 
-
 	def deriv_Hexc(self):
-		return (self.mf.get_veff(self.mf.mol, self.rho + 0.01) - self.mf.get_veff(self.mf.mol, self.rho - 0.01))/0.01**2
+		return (self.mf.get_veff(self.mf.mol, self.rho + 0.001) - self.mf.get_veff(self.mf.mol, self.rho - 0.001))/(0.001**2)
+		#return self.mf.get_veff(self.mf.mol, self.rho)
+		#return 3*self.rho @ self.rho
 
 	def dkeq(self, eigvals, eigvecs, y, beta, P):
 		total = 0
 		rows = int(np.sqrt(y.size))
+		proj = self.get_projectors(eigvals, eigvecs)
 		for i in range(rows):
 			for j in range(rows):
 				if i == j:
-					total += 1/(1+np.exp(eigvals[j]))**2 * np.exp(eigvals[j]) * eigvecs[j] * self.inv_overlap*self.deriv_Hexc() * y * eigvecs[j]
+					total += -1/(1+np.exp(eigvals[j]))**2 * np.exp(eigvals[j]) * proj[j] @ self.inv_overlap @ self.deriv_Hexc() @ y @ proj[j]
 
 				else:
-					total += (self.F(eigvals[i])-self.F(eigvals[j]))/(eigvals[i]-eigvals[j]) * eigvecs[i] * self.inv_overlap*self.deriv_Hexc() * y * eigvecs[j]
+					total += (self.F(eigvals[i])-self.F(eigvals[j]))/(eigvals[i]-eigvals[j]) * proj[i] @ self.inv_overlap @ self.deriv_Hexc() @ y @ proj[j]
 
 		return total
+
+	def get_projectors(self, eigvals, eigvecs):
+		"""
+		Function for computing the projectors onto the space of the eigenvalues
+		:param eigvals: array of eigenvalues - needed to determine degeneracy
+		:param eigvecs: array of eigenvectors
+		:return proj: 	array of projectors
+		"""
+		degen = False
+		pairs = []
+		for i in range(eigvals.size):
+			for j in range(eigvals.size):
+				if i != j:
+					if eigvals[i] == eigvals[j]:
+						degen = True
+						pairs.append((i, j))
+
+		proj = np.zeros((eigvals.size, self.rho.shape[0], self.rho.shape[0]), dtype=complex)
+		if degen:
+			print("Degenerate spectrum")
+			for i in range(eigvecs.shape[0]):
+				proj[i] = np.outer(eigvecs[i], eigvecs[i].conj().T)
+		else:
+			for i in range(eigvecs.shape[0]):
+				proj[i] = np.outer(eigvecs[i], eigvecs[i].conj().T)
+		return proj
+
+
 
 	def calc_ynext(self, beta, P, H, identity, mu, y):
 		rows = int(np.sqrt(P.size))
 		P = P.reshape(rows, rows)
 		Hexc = self.mf.get_veff(self.mf.mol, P)
 		scriptH = beta*(self.inv_overlap.dot(H) + self.inv_overlap.dot(Hexc) - mu*identity)
-		eigvals, eigvecs = eigh(scriptH, self.ovlp)
+		eigvals, eigvecs = eig(scriptH, self.ovlp)
+		print("Eigvals: ", eigvals)
+		#print("Eigvecs: ", eigvecs)
 
 		scaledH = -0.5*(self.inv_overlap.dot(H) + self.inv_overlap.dot(Hexc) - mu*identity)
 		K = (identity-self.inv_overlap.dot(P)).dot(scaledH)
