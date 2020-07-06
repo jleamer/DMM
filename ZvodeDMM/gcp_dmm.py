@@ -19,17 +19,18 @@ class GCP_DMM(DMM):
 			self.mu
 		except AttributeError:
 			raise AttributeError("Chemical potential needs to be specified")
-		'''
+
 		try:
 			self.mf
 		except AttributeError:
 			raise AttributeError("MF not specified from DFT")
-		'''
+
 		# Create the initial density matrix
 		# self.rho = 0.5 * self.identity
 		self.rho = 0.5 * self.ovlp
 		self.num_electrons = [self.rho.trace()]
-		self.y = -1/4*(self.H + 0.01*self.rho - self.mu*self.ovlp)
+		self.y = -1/4*(self.H + self.mf.get_veff(self.mf.mol, self.rho) - self.mu*self.ovlp)
+		self.hexc = [self.mf.get_veff(self.mf.mol, self.rho)]
 
 		"""
 		# Create the initial y for iteration
@@ -159,8 +160,6 @@ class GCP_DMM(DMM):
 				proj[i] = np.outer(eigvecs[i], eigvecs[i].conj().T)
 		return proj
 
-
-
 	def calc_ynext(self, beta, P, H, identity, mu, y):
 		rows = int(np.sqrt(P.size))
 		P = P.reshape(rows, rows)
@@ -192,7 +191,6 @@ class GCP_DMM(DMM):
 
 		return P + dbeta*y
 
-	
 	def zvode(self, nsteps):
 		'''
 		This function implements scipy's complex valued ordinary differential equation (ZVODE) using the rhs function above
@@ -222,6 +220,7 @@ class GCP_DMM(DMM):
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
 			self.num_electrons.append(solver.y.reshape(self.rho.shape[0], self.rho.shape[0]).trace())
+			#self.hexc.append(self.mf.get_veff(self.mf.mol, solver.y.reshape(self.rho.shape[0], self.rho.shape[0])))
 			steps += 1
 		print("GCP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
@@ -278,6 +277,7 @@ class GCP_DMM(DMM):
 			self.beta += self.dbeta
 			self.rho += (1/6)*self.dbeta*(k1+2*k2+2*k3+k4)
 			self.num_electrons.append(self.rho.trace())
+			#self.hexc.append(self.mf.get_veff(self.mf.mol, self.rho))
 
 		return self
 

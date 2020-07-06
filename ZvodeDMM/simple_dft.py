@@ -4,6 +4,7 @@ from scipy.io import mmwrite, mmread
 from scipy import sparse
 from scipy import linalg
 import matplotlib.pyplot as plt
+import matplotlib.animation as ani
 from ZvodeDMM.dmm import DMM
 from ZvodeDMM.gcp_dmm import GCP_DMM
 from ZvodeDMM.cp_dmm import CP_DMM
@@ -14,6 +15,38 @@ from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
 
+def setup_animation():
+    im.set_array(numpy.zeros((11, 11)))
+    return im
+
+def self_consistent_Aiken(h1e, rho, inv_ovlp, mu, beta, cc, nsteps, ovlp):
+
+    def single_step(rho_):
+        h = h1e + cc*rho_ @ rho_
+        arg = inv_ovlp@h
+        identity = numpy.identity(rho.shape[0])
+        return ovlp @ linalg.funm(arg, lambda _: 1/(1+numpy.exp(beta*(_ - mu))))
+        #return ovlp @ linalg.inv(identity + linalg.expm(beta*(arg-mu*identity)))
+
+
+    norm_diff = []
+    rho_list = numpy.zeros((nsteps, 11, 11))
+
+    rho_0 = rho.copy()
+    for i in range(nsteps):
+        print(i)
+        rho_list[i] = rho_0.copy()
+        prev_aitken_rho = rho_0.copy()
+        rho_1 = single_step(rho_0)
+        rho_2 = single_step(rho_1)
+
+        #aitken_rho = (rho_0 @ rho_2 - rho_1 @ rho_1) @ linalg.pinv(rho_0 + rho_2 - 2*rho_1)
+        aitken_rho = rho_2 - (rho_2 - rho_1) @ (rho_2 - rho_1)  @ linalg.pinv((rho_2 - rho_1) - (rho_1 - rho_0))
+        rho_0 = aitken_rho
+
+        norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
+
+    return norm_diff, rho_list
 '''
 A simple example to run DFT calculation.
 '''
@@ -85,7 +118,7 @@ print("DFT trace: ", dm.trace())
 
 # Now calculate density matrix using NTPoly
 # first write h1e to hamiltonian file for later use
-mmwrite('core_hamiltonian.mtx', sparse.coo_matrix(fock))
+mmwrite('core_hamiltonian.mtx', sparse.coo_matrix(h1e))
 
 # set up parameters for NTPoly solvers
 convergence_threshold = 1e-10
@@ -207,26 +240,49 @@ plt.ylabel('\mu')
 plt.legend(numpoints=1)
 
 cp_titles = [['Zvode', 'RK4', 'Exact Expression'], ['DFT', 'NTPoly', 'Identity']]
-cp_data = [[cp.rho.real, cp2.rho.real, exact2.real], [dm.real, NT_density.real, cp.identity.real]]
+cp_data = [[cp.rho.real/cp.rho.trace().real, cp2.rho.real/cp2.rho.trace().real, exact2.real/exact2.trace().real], [dm.real/dm.trace().real, NT_density.real/NT_density.trace().real, cp.identity.real/cp.identity.trace().real]]
+vmin = numpy.min(cp_data)
+vmax = numpy.max(cp_data)
 fig4, axes = plt.subplots(2, 3)
 for col in range(3):
     for row in range(2):
         ax = axes[row, col]
-        im = ax.imshow(cp_data[row][col], origin='lower', vmin=numpy.amin(NT_density), vmax=vmax)
+        im = ax.imshow(cp_data[row][col], origin='lower', vmin=vmin, vmax=vmax)
         ax.set_title(cp_titles[row][col])
 fig4.colorbar(im, ax=axes)
 
+#print("Hexc: ", gcp.hexc[0])
+#print("Hexc end: ", gcp.hexc[999])
+
+# Self consistency checking
+gcp3 = GCP_DMM(H=h1e, dbeta=0.003, ovlp=gcp.identity, mu=mu, mf=mf)
+gcp3.no_zvode(900)
+
+rho = gcp3.rho.copy()
+nsteps = 100
+norm_diff, rho_list = self_consistent_Aiken(h1e, rho, gcp3.inv_overlap, gcp3.mu, gcp3.beta, .1, nsteps, gcp3.ovlp)
+
+fig5 = plt.figure(5)
+plt.subplot(111)
+plt.plot(norm_diff)
+plt.title("Aitken's Convergence")
+plt.ylabel("Norm difference")
+plt.xlabel("Iteration number")
+
+
+fig6, axes = plt.subplots(1, 1)
+im = axes.imshow(rho_list[0].real, origin='lower', vmin=numpy.min(rho_list), vmax=numpy.max(rho_list))
+fig6.colorbar(im, ax=axes)
+
+def animate(i):
+    im.set_array(rho_list[i].real)
+    axes.set_title(str(i))
+    return im
+
+anim = ani.FuncAnimation(fig6, animate, init_func=setup_animation, frames=range(nsteps), interval=500, blit=False)
 
 '''
-# Self consistency checking
-gcp3 = GCP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, mu=mu, mf=mf)
-gcp3.no_zvode(900)
-fig5 = plt.figure(5)
-plt.subplot(121)
-plt.imshow(gcp3.rho.real, origin='lower')
-plt.title("DMM")
-
-for i in range(5):
+for i in range(4):
     print(i+901)
     temp = gcp3.test_rhs(gcp3.dbeta, gcp3.rho, gcp3.y)
     gcp3.y = gcp3.calc_ynext(gcp3.beta, gcp3.rho, gcp3.H, gcp3.identity, gcp3.mu, gcp3.y)
@@ -236,4 +292,5 @@ plt.subplot(122)
 plt.imshow(gcp3.rho.real, origin='lower')
 plt.title("SC check")
 '''
+
 plt.show()
