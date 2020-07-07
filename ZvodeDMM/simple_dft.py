@@ -41,7 +41,7 @@ def self_consistent_Aiken(h1e, rho, inv_ovlp, mu, beta, cc, nsteps, ovlp):
         rho_2 = single_step(rho_1)
 
         #aitken_rho = (rho_0 @ rho_2 - rho_1 @ rho_1) @ linalg.pinv(rho_0 + rho_2 - 2*rho_1)
-        aitken_rho = rho_2 - (rho_2 - rho_1) @ (rho_2 - rho_1)  @ linalg.pinv((rho_2 - rho_1) - (rho_1 - rho_0))
+        aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ((rho_2 - rho_1) - (rho_1 - rho_0))
         rho_0 = aitken_rho
 
         norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
@@ -259,8 +259,8 @@ gcp3 = GCP_DMM(H=h1e, dbeta=0.003, ovlp=gcp.identity, mu=mu, mf=mf)
 gcp3.no_zvode(900)
 
 rho = gcp3.rho.copy()
-nsteps = 100
-norm_diff, rho_list = self_consistent_Aiken(h1e, rho, gcp3.inv_overlap, gcp3.mu, gcp3.beta, .1, nsteps, gcp3.ovlp)
+nsteps = 10
+norm_diff, rho_list = self_consistent_Aiken(h1e, rho, gcp3.inv_overlap, gcp3.mu, gcp3.beta, 10, nsteps, gcp3.ovlp)
 
 fig5 = plt.figure(5)
 plt.subplot(111)
@@ -270,16 +270,29 @@ plt.ylabel("Norm difference")
 plt.xlabel("Iteration number")
 
 
-fig6, axes = plt.subplots(1, 1)
-im = axes.imshow(rho_list[0].real, origin='lower', vmin=numpy.min(rho_list), vmax=numpy.max(rho_list))
-fig6.colorbar(im, ax=axes)
+fig6, axes6 = plt.subplots(1, 1)
+im6 = axes6.imshow(rho_list[0].real, origin='lower', vmin=numpy.min(rho_list), vmax=numpy.max(rho_list))
+fig6.colorbar(im, ax=axes6)
 
 def animate(i):
-    im.set_array(rho_list[i].real)
-    axes.set_title(str(i))
+    im6.set_array(rho_list[i].real)
+    axes6.set_title(str(i))
     return im
 
 anim = ani.FuncAnimation(fig6, animate, init_func=setup_animation, frames=range(nsteps), interval=500, blit=False)
+
+sc_data = [rho_list[nsteps-1].real/rho_list[nsteps-1].trace().real, dm.real/dm.trace().real]
+sc_titles = ["Converged P", "DFT"]
+vmin = numpy.min(sc_data)
+vmax = numpy.max(sc_data)
+fig7, axes7 = plt.subplots(1, 2)
+for col in range(2):
+    ax = axes7[col]
+    im = ax.imshow(sc_data[col], origin='lower', vmin=vmin, vmax=vmax)
+    ax.set_title(sc_titles[col])
+fig7.colorbar(im, ax=axes7)
+
+
 
 '''
 for i in range(4):
