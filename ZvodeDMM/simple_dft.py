@@ -8,6 +8,7 @@ import matplotlib.animation as ani
 from ZvodeDMM.dmm import DMM
 from ZvodeDMM.gcp_dmm import GCP_DMM
 from ZvodeDMM.cp_dmm import CP_DMM
+import numpy.ma as ma
 
 # import things for NTPoly
 from NTPoly.Build.python import NTPolySwig as NT
@@ -19,32 +20,54 @@ def setup_animation():
     im.set_array(numpy.zeros((11, 11)))
     return im
 
-def self_consistent_Aiken(h1e, rho, inv_ovlp, mu, beta, cc, nsteps, ovlp):
+def self_consistent_Aiken(h1e, gcp, nsteps):
 
     def single_step(rho_):
-        h = h1e + cc*rho_ @ rho_
-        arg = inv_ovlp@h
-        identity = numpy.identity(rho.shape[0])
-        return ovlp @ linalg.funm(arg, lambda _: 1/(1+numpy.exp(beta*(_ - mu))))
+
+        #gcp.H = h
+        #gcp.beta = 0
+        #gcp.rho = gcp.ovlp.copy()
+        #gcp.no_zvode(1000)
+        #return gcp.rho
+        h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
+        mu = gcp.mu
+        arg = gcp.inv_overlap@h
+        return ovlp @ linalg.inv(gcp.identity + linalg.expm(gcp.beta*(arg-mu*gcp.identity)))
+        #gcp_ = GCP_DMM(H=h, ovlp=gcp.ovlp, mu=gcp.mu, dbeta=0.003, mf=gcp.mf)
+        #gcp_.no_zvode(1000)
+        #return gcp_.rho
+
+
+        #identity = numpy.identity(rho.shape[0])
+
+
+        #return ovlp @ linalg.funm(arg, lambda _: numpy.exp(-beta*(_ - mu))/(1+numpy.exp(-beta*(_ - mu))))
+        #return ovlp @ linalg.funm(arg, lambda _: 1/(1+numpy.exp(beta*(_ - mu))))
+        #return ovlp @ linalg.funm(arg, lambda _: _ >= mu)
         #return ovlp @ linalg.inv(identity + linalg.expm(beta*(arg-mu*identity)))
 
 
     norm_diff = []
-    rho_list = numpy.zeros((nsteps, 11, 11))
+    rho_list = []
 
-    rho_0 = rho.copy()
+    rho_0 = gcp.ovlp
+    rho_list.append(rho_0.copy())
     for i in range(nsteps):
-        print(i)
-        rho_list[i] = rho_0.copy()
         prev_aitken_rho = rho_0.copy()
         rho_1 = single_step(rho_0)
         rho_2 = single_step(rho_1)
 
-        #aitken_rho = (rho_0 @ rho_2 - rho_1 @ rho_1) @ linalg.pinv(rho_0 + rho_2 - 2*rho_1)
-        aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ((rho_2 - rho_1) - (rho_1 - rho_0))
+        aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ma.array(rho_2 - 2*rho_1 + rho_0)
+        aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
+
         rho_0 = aitken_rho
+        rho_list.append(rho_0.copy())
 
         norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
+
+        if numpy.allclose(aitken_rho, prev_aitken_rho):
+            print("Iterations converged!")
+            break
 
     return norm_diff, rho_list
 '''
@@ -205,13 +228,13 @@ fig2.colorbar(im, ax=axes)
 
 
 # Repeat for cp case
-cp = CP_DMM(H=h1e, dbeta=0.0003, ovlp=ovlp, num_electrons=dm.trace())
+cp = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=dm.trace())
 cp.no_zvode(1000)
 #cp.purify()
 print("CP Zvode trace: ",cp.rho.trace())
 print("CP Zvode chemical potential: ", cp.no_get_mu())
 
-cp2 = CP_DMM(H=h1e, dbeta=0.0003, ovlp=ovlp, num_electrons=dm.trace())
+cp2 = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=dm.trace())
 cp2.non_orth_rk4(1000)
 #cp2.purify()
 print("CP RK4 trace: ", cp2.rho.trace())
@@ -255,23 +278,25 @@ fig4.colorbar(im, ax=axes)
 #print("Hexc end: ", gcp.hexc[999])
 
 # Self consistency checking
-gcp3 = GCP_DMM(H=h1e, dbeta=0.003, ovlp=gcp.identity, mu=mu, mf=mf)
-gcp3.no_zvode(900)
+gcp3 = GCP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, mu=mu, mf=mf)
+gcp3.no_zvode(1000)
 
 rho = gcp3.rho.copy()
-nsteps = 10
-norm_diff, rho_list = self_consistent_Aiken(h1e, rho, gcp3.inv_overlap, gcp3.mu, gcp3.beta, 10, nsteps, gcp3.ovlp)
+nsteps = 100
+norm_diff, rho_list = self_consistent_Aiken(h1e, gcp3, nsteps)
+nsteps = len(rho_list)
+print(nsteps)
 
 fig5 = plt.figure(5)
 plt.subplot(111)
-plt.plot(norm_diff)
+plt.semilogy(norm_diff, '*-')
 plt.title("Aitken's Convergence")
 plt.ylabel("Norm difference")
 plt.xlabel("Iteration number")
 
 
 fig6, axes6 = plt.subplots(1, 1)
-im6 = axes6.imshow(rho_list[0].real, origin='lower', vmin=numpy.min(rho_list), vmax=numpy.max(rho_list))
+im6 = axes6.imshow(rho_list[0].real, origin='lower', vmin=numpy.min(rho_list).real, vmax=numpy.max(rho_list).real)
 fig6.colorbar(im, ax=axes6)
 
 def animate(i):
@@ -281,16 +306,31 @@ def animate(i):
 
 anim = ani.FuncAnimation(fig6, animate, init_func=setup_animation, frames=range(nsteps), interval=500, blit=False)
 
-sc_data = [rho_list[nsteps-1].real/rho_list[nsteps-1].trace().real, dm.real/dm.trace().real]
-sc_titles = ["Converged P", "DFT"]
+sc_data = [rho_list[nsteps-1].real/rho_list[nsteps-1].trace().real, dm.real/dm.trace().real, numpy.abs(rho_list[nsteps-1]/rho_list[nsteps-1].trace()-dm/dm.trace())]
+print("Trace of conv. P: ", rho_list[nsteps-1].trace().real)
+sc_titles = ["Converged P", "DFT", "Conv. P - DFT"]
 vmin = numpy.min(sc_data)
 vmax = numpy.max(sc_data)
-fig7, axes7 = plt.subplots(1, 2)
-for col in range(2):
+'''
+fig7, axes7 = plt.subplots(1, 3)
+for col in range(3):
     ax = axes7[col]
     im = ax.imshow(sc_data[col], origin='lower', vmin=vmin, vmax=vmax)
     ax.set_title(sc_titles[col])
 fig7.colorbar(im, ax=axes7)
+print("Norm diff bw conv. P and DFT: ", linalg.norm(rho_list[nsteps-1]-dm))
+'''
+
+fig7 = plt.figure(7)
+plt.subplot(121)
+plt.imshow(rho_list[nsteps-1].real, origin='lower')
+plt.colorbar()
+plt.title('Conv. P')
+
+plt.subplot(122)
+plt.imshow(dm.real, origin='lower')
+plt.colorbar()
+plt.title("DFT")
 
 
 
