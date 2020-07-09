@@ -17,6 +17,11 @@ class CP_DMM(DMM):
 		except AttributeError:
 			raise AttributeError("Number of electrons need to be specified")
 
+		try:
+			self.mf
+		except AttributeError:
+			raise AttributeError("MF not specified from DFT")
+
 		#Define the initial density matrix
 		#self.rho = self.num_electrons/self.identity.trace() * self.identity
 		self.rho = self.num_electrons/self.ovlp.trace() * self.ovlp
@@ -59,11 +64,11 @@ class CP_DMM(DMM):
 
 		rows = int(np.sqrt(P.size))
 		P = P.reshape(rows, rows)
-		c = P.dot(identity-self.inv_overlap.dot(P))
+		c = P.dot(identity-self.inv_ovlp.dot(P))
 		d = H.dot(c)
-		alpha = np.sum(self.inv_overlap*d.T)/c.trace()
-		scaledH = -0.5*(self.inv_overlap.dot(H) - alpha*identity)
-		K = (identity - self.inv_overlap.dot(P)).dot(scaledH)
+		alpha = np.sum(self.inv_ovlp*d.T)/c.trace()
+		scaledH = -0.5*(self.inv_ovlp.dot(H) - alpha*identity)
+		K = (identity - self.inv_ovlp.dot(P)).dot(scaledH)
 		f = P.dot(K) + K.conj().T.dot(P)
 		return f.reshape(-1)
 
@@ -209,9 +214,9 @@ class CP_DMM(DMM):
 		This function calculates the chemical potential of the system in a non-orthogonal basis
 		:return: the chemical potential, mu
 		'''
-		temp = self.rho.dot(self.identity - self.inv_overlap.dot(self.rho))
+		temp = self.rho.dot(self.identity - self.inv_ovlp.dot(self.rho))
 		temp2 = self.H.dot(temp)
-		return np.sum(self.inv_overlap*temp2.T)/temp.trace()
+		return np.sum(self.inv_ovlp*temp2.T)/temp.trace()
 
 if __name__ == '__main__':
 	H = np.random.rand(100,100) + 1j*np.random.rand(100,100)

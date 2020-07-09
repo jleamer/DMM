@@ -27,7 +27,7 @@ class GCP_DMM(DMM):
 
 		# Create the initial density matrix
 		# self.rho = 0.5 * self.identity
-		self.rho = 0.5 * self.ovlp
+		self.rho = 0.5 * self.ovlp + 1j*np.zeros((11, 11))
 		self.num_electrons = [self.rho.trace()]
 		self.y = -1/4*(self.H + self.mf.get_veff(self.mf.mol, self.rho) - self.mu*self.ovlp)
 		self.hexc = [self.mf.get_veff(self.mf.mol, self.rho)]
@@ -91,26 +91,10 @@ class GCP_DMM(DMM):
 		"""
 		rows = int(np.sqrt(P.size))
 		P = P.reshape(rows, rows)
-		scaledH = -0.5*(self.inv_overlap.dot(H) - mu*identity)
-		K = (identity - self.inv_overlap.dot(P)).dot(scaledH)
+		scaledH = -0.5*(self.inv_ovlp.dot(H) - mu*identity)
+		K = (identity - self.inv_ovlp.dot(P)).dot(scaledH)
 		f = P.dot(K) + K.conj().T.dot(P)
 		return f.reshape(-1)
-
-	def sc_rhs(self, beta, P, H, identity, mu, Hexc):
-		"""
-		This function implements the gcp version of the rhs of the derivative expression
-		for use in the python ODE solvers
-		:param beta:
-		:param P:
-		:param H:
-		:param identity:
-		:param mu:
-		:return:
-		"""
-		rows = int(np.sqrt(P.size))
-		P = P.reshape(rows, rows)
-		scaledH = -0.5*(self.inv_overlap.dot(H) + self.inv_overlap.dot(self.vxld()+self.vcld()))
-		return
 
 	def F(self, eigval):
 		return 1/(1+np.exp(eigval))
@@ -127,10 +111,10 @@ class GCP_DMM(DMM):
 		for i in range(rows):
 			for j in range(rows):
 				if i == j:
-					total += -1/(1+np.exp(eigvals[j]))**2 * np.exp(eigvals[j]) * proj[j] @ self.inv_overlap @ self.deriv_Hexc() @ y @ proj[j]
+					total += -1/(1+np.exp(eigvals[j]))**2 * np.exp(eigvals[j]) * proj[j] @ self.inv_ovlp @ self.deriv_Hexc() @ y @ proj[j]
 
 				else:
-					total += (self.F(eigvals[i])-self.F(eigvals[j]))/(eigvals[i]-eigvals[j]) * proj[i] @ self.inv_overlap @ self.deriv_Hexc() @ y @ proj[j]
+					total += (self.F(eigvals[i])-self.F(eigvals[j]))/(eigvals[i]-eigvals[j]) * proj[i] @ self.inv_ovlp @ self.deriv_Hexc() @ y @ proj[j]
 
 		return total
 
@@ -164,13 +148,13 @@ class GCP_DMM(DMM):
 		rows = int(np.sqrt(P.size))
 		P = P.reshape(rows, rows)
 		Hexc = self.mf.get_veff(self.mf.mol, P)
-		scriptH = beta*(self.inv_overlap.dot(H) + self.inv_overlap.dot(Hexc) - mu*identity)
+		scriptH = beta*(self.inv_ovlp.dot(H) + self.inv_ovlp.dot(Hexc) - mu*identity)
 		eigvals, eigvecs = eig(scriptH, self.ovlp)
 		print("Eigvals: ", eigvals)
 		#print("Eigvecs: ", eigvecs)
 
-		scaledH = -0.5*(self.inv_overlap.dot(H) + self.inv_overlap.dot(Hexc) - mu*identity)
-		K = (identity-self.inv_overlap.dot(P)).dot(scaledH)
+		scaledH = -0.5*(self.inv_ovlp.dot(H) + self.inv_ovlp.dot(Hexc) - mu*identity)
+		K = (identity-self.inv_ovlp.dot(P)).dot(scaledH)
 		f = P.dot(K) + K.conj().T.dot(P)
 
 		DK = 0.5*self.dkeq(eigvals, eigvecs, y, beta, P)

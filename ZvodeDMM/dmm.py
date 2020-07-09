@@ -55,7 +55,7 @@ class DMM:
 
 		#Compute the inverse of the overlap matrix
 		#	For now just using the built in inversion methods in numpy
-		self.inv_overlap = np.linalg.inv(self.ovlp)
+		self.inv_ovlp = np.linalg.inv(self.ovlp)
 	
 	def get_exact_pop(self, **kwargs):
 		'''

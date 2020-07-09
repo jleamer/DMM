@@ -31,7 +31,7 @@ def self_consistent_Aiken(h1e, gcp, nsteps):
         #return gcp.rho
         h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
         mu = gcp.mu
-        arg = gcp.inv_overlap@h
+        arg = gcp.inv_ovlp@h
         return ovlp @ linalg.inv(gcp.identity + linalg.expm(gcp.beta*(arg-mu*gcp.identity)))
         #gcp_ = GCP_DMM(H=h, ovlp=gcp.ovlp, mu=gcp.mu, dbeta=0.003, mf=gcp.mf)
         #gcp_.no_zvode(1000)
@@ -228,13 +228,13 @@ fig2.colorbar(im, ax=axes)
 
 
 # Repeat for cp case
-cp = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=dm.trace())
+cp = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=dm.trace(), mf=mf)
 cp.no_zvode(1000)
 #cp.purify()
 print("CP Zvode trace: ",cp.rho.trace())
 print("CP Zvode chemical potential: ", cp.no_get_mu())
 
-cp2 = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=dm.trace())
+cp2 = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=dm.trace(), mf=mf)
 cp2.non_orth_rk4(1000)
 #cp2.purify()
 print("CP RK4 trace: ", cp2.rho.trace())
