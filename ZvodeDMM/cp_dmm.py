@@ -85,7 +85,7 @@ class CP_DMM(DMM):
 			solver.integrate(solver.t + self.dbeta)
 			self.mu_list.append(self.get_mu())
 			steps += 1
-		print("CP_Zvode steps: ", str(steps))
+		#print("CP_Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 		self.beta = solver.t
 		return self
@@ -105,7 +105,7 @@ class CP_DMM(DMM):
 			self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 			self.no_mu_list.append(self.no_get_mu())
 			steps += 1
-		print("CP Zvode steps: ", str(steps))
+		#print("CP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 		self.beta = solver.t
 		return self

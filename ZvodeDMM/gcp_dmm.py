@@ -187,7 +187,7 @@ class GCP_DMM(DMM):
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
 			steps += 1
-		print("GCP Zvode steps: ", str(steps))
+		#print("GCP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 		self.beta = solver.t
 		return self
@@ -206,7 +206,7 @@ class GCP_DMM(DMM):
 			self.num_electrons.append(solver.y.reshape(self.rho.shape[0], self.rho.shape[0]).trace())
 			#self.hexc.append(self.mf.get_veff(self.mf.mol, solver.y.reshape(self.rho.shape[0], self.rho.shape[0])))
 			steps += 1
-		print("GCP Zvode steps: ", str(steps))
+		#print("GCP Zvode steps: ", str(steps))
 		self.rho = solver.y.reshape(self.rho.shape[0], self.rho.shape[0])
 		self.beta = solver.t
 		return self

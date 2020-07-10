@@ -10,36 +10,8 @@ from ZvodeDMM.gcp_dmm import GCP_DMM
 from ZvodeDMM.cp_dmm import CP_DMM
 import numpy.ma as ma
 
-def self_consistent_Aiken_zvode(h1e, gcp, nsteps):
 
-    def single_step(rho_):
-        h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
-        gcp_ = GCP_DMM(H=h, ovlp=gcp.ovlp, mu=gcp.mu, dbeta=0.003, mf=gcp.mf)
-        gcp_.no_zvode(1000)
-        return gcp_.rho
-        #gcp.H = h
-        #gcp.beta = 0
-        #gcp.rho = gcp.ovlp.copy()
-        #gcp.no_zvode(1000)
-        #return gcp.rho
-        #h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
-        #mu = gcp.mu
-        #arg = gcp.inv_ovlp@h
-        #return ovlp @ linalg.inv(gcp.identity + linalg.expm(gcp.beta*(arg-mu*gcp.identity)))
-        #gcp_ = GCP_DMM(H=h, ovlp=gcp.ovlp, mu=gcp.mu, dbeta=0.003, mf=gcp.mf)
-        #gcp_.no_zvode(1000)
-        #return gcp_.rho
-
-
-        #identity = numpy.identity(rho.shape[0])
-
-
-        #return ovlp @ linalg.funm(arg, lambda _: numpy.exp(-beta*(_ - mu))/(1+numpy.exp(-beta*(_ - mu))))
-        #return ovlp @ linalg.funm(arg, lambda _: 1/(1+numpy.exp(beta*(_ - mu))))
-        #return ovlp @ linalg.funm(arg, lambda _: _ >= mu)
-        #return ovlp @ linalg.inv(identity + linalg.expm(beta*(arg-mu*identity)))
-
-
+def gcp_self_consistent_Aiken_zvode(h1e, gcp, nsteps, single_step, zvode_steps):
     norm_diff = []
     rho_list = []
 
@@ -47,8 +19,8 @@ def self_consistent_Aiken_zvode(h1e, gcp, nsteps):
     rho_list.append(rho_0.copy())
     for i in range(nsteps):
         prev_aitken_rho = rho_0.copy()
-        rho_1 = single_step(rho_0)
-        rho_2 = single_step(rho_1)
+        rho_1 = single_step(rho_0, gcp, h1e, zvode_steps)
+        rho_2 = single_step(rho_1, gcp, h1e, zvode_steps)
 
         aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ma.array(rho_2 - 2*rho_1 + rho_0)
         aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
@@ -64,15 +36,8 @@ def self_consistent_Aiken_zvode(h1e, gcp, nsteps):
 
     return norm_diff, rho_list
 
-# Seems that the RK4 self-consistency convergence is less effective than Zvode
-def self_consistent_Aiken_rk4(h1e, gcp, nsteps):
 
-    def single_step(rho_):
-        h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
-        gcp_ = GCP_DMM(H=h, ovlp=gcp.ovlp, mu=gcp.mu, dbeta=0.003, mf=gcp.mf)
-        gcp_.non_orth_rk4(1000)
-        return gcp_.rho
-
+def cp_self_consistent_Aiken_zvode(h1e, cp, nsteps, single_step, zvode_steps):
     norm_diff = []
     rho_list = []
 
@@ -80,8 +45,8 @@ def self_consistent_Aiken_rk4(h1e, gcp, nsteps):
     rho_list.append(rho_0.copy())
     for i in range(nsteps):
         prev_aitken_rho = rho_0.copy()
-        rho_1 = single_step(rho_0)
-        rho_2 = single_step(rho_1)
+        rho_1 = single_step(rho_0, cp, h1e, zvode_steps)
+        rho_2 = single_step(rho_1, cp, h1e, zvode_steps)
 
         aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ma.array(rho_2 - 2*rho_1 + rho_0)
         aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
@@ -97,115 +62,21 @@ def self_consistent_Aiken_rk4(h1e, gcp, nsteps):
 
     return norm_diff, rho_list
 
-# Seems that the direct inversion method for self-consistent converge is also less effective than Zvode
-def self_consistent_Aiken_inv(h1e, gcp, nsteps):
 
-    def single_step(rho_):
-        h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
-        mu = gcp.mu
-        arg = gcp.inv_ovlp@h
-        return ovlp @ linalg.inv(gcp.identity + linalg.expm(gcp.beta*(arg-mu*gcp.identity)))
-        #return ovlp @ linalg.funm(arg, lambda _: numpy.exp(-beta*(_ - mu))/(1+numpy.exp(-beta*(_ - mu))))
-        #return ovlp @ linalg.funm(arg, lambda _: 1/(1+np.exp(gcp.beta*(_ - mu))))
-        #return ovlp @ linalg.inv(identity + linalg.expm(beta*(arg-mu*identity)))
+def gcp_single_step_zvode(rho_, gcp, h1e, zvode_steps):
+    h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
+    gcp_ = GCP_DMM(H=h, ovlp=gcp.ovlp, mu=gcp.mu, dbeta=0.003, mf=gcp.mf)
+    gcp_.no_zvode(zvode_steps)
+    return gcp_.rho.copy()
 
 
-    norm_diff = []
-    rho_list = []
-
-    rho_0 = gcp.rho.copy()
-    rho_list.append(rho_0.copy())
-    for i in range(nsteps):
-        prev_aitken_rho = rho_0.copy()
-        rho_1 = single_step(rho_0)
-        rho_2 = single_step(rho_1)
-
-        aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ma.array(rho_2 - 2*rho_1 + rho_0)
-        aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
-
-        rho_0 = aitken_rho
-        rho_list.append(rho_0.copy())
-
-        norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
-
-        if np.allclose(aitken_rho, prev_aitken_rho):
-            print("Iterations converged!")
-            break
-
-    return norm_diff, rho_list
-
-# Seems that this one is the winner.  it gets to a similar level as using Zvode but faster (like 20 steps)
-def self_consistent_Aiken_funm(h1e, gcp, nsteps):
-
-    def single_step(rho_):
-        h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
-        mu = gcp.mu
-        arg = gcp.inv_ovlp@h
-        #return ovlp @ linalg.inv(gcp.identity + linalg.expm(gcp.beta*(arg-mu*gcp.identity)))
-        #return ovlp @ linalg.funm(arg, lambda _: numpy.exp(-beta*(_ - mu))/(1+numpy.exp(-beta*(_ - mu))))
-        return ovlp @ linalg.funm(arg, lambda _: 1/(1+np.exp(gcp.beta*(_ - mu))))
-        #return ovlp @ linalg.inv(identity + linalg.expm(beta*(arg-mu*identity)))
+def cp_single_step_zvode(rho_, cp, h1e, zvode_steps):
+    h = h1e + cp.mf.get_veff(cp.mf.mol, rho_)
+    cp_ = CP_DMM(H=h, ovlp=cp.ovlp, dbeta=0.003, mf=cp.mf, num_electrons=cp.num_electrons)
+    cp_.no_zvode(zvode_steps)
+    return cp_.rho.copy()
 
 
-    norm_diff = []
-    rho_list = []
-
-    rho_0 = gcp.rho.copy()
-    rho_list.append(rho_0.copy())
-    for i in range(nsteps):
-        prev_aitken_rho = rho_0.copy()
-        rho_1 = single_step(rho_0)
-        rho_2 = single_step(rho_1)
-
-        aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ma.array(rho_2 - 2*rho_1 + rho_0)
-        aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
-
-        rho_0 = aitken_rho
-        rho_list.append(rho_0.copy())
-
-        norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
-
-        if np.allclose(aitken_rho, prev_aitken_rho):
-            print("Iterations converged!")
-            break
-
-    return norm_diff, rho_list
-
-def cp_self_consistent_Aiken_funm(h1e, cp, nsteps):
-
-    def single_step(rho_):
-        h = h1e + cp.mf.get_veff(cp.mf.mol, rho_)
-        mu = cp.no_get_mu()
-        arg = cp.inv_ovlp@h
-        #return ovlp @ linalg.inv(gcp.identity + linalg.expm(gcp.beta*(arg-mu*gcp.identity)))
-        #return ovlp @ linalg.funm(arg, lambda _: numpy.exp(-beta*(_ - mu))/(1+numpy.exp(-beta*(_ - mu))))
-        return ovlp @ linalg.funm(arg, lambda _: 1/(1+np.exp(cp.beta*(_ - mu))))
-        #return ovlp @ linalg.inv(identity + linalg.expm(beta*(arg-mu*identity)))
-
-
-    norm_diff = []
-    rho_list = []
-
-    rho_0 = gcp.rho.copy()
-    rho_list.append(rho_0.copy())
-    for i in range(nsteps):
-        prev_aitken_rho = rho_0.copy()
-        rho_1 = single_step(rho_0)
-        rho_2 = single_step(rho_1)
-
-        aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ma.array(rho_2 - 2*rho_1 + rho_0)
-        aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
-
-        rho_0 = aitken_rho
-        rho_list.append(rho_0.copy())
-
-        norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
-
-        if np.allclose(aitken_rho, prev_aitken_rho):
-            print("Iterations converged!")
-            break
-
-    return norm_diff, rho_list
 '''
 A simple example to run DFT calculation.
 '''
@@ -277,27 +148,27 @@ assert(np.allclose(fock_direct,fock))
 mmwrite('fock', sparse.coo_matrix(fock))
 
 print("DFT trace: ", dm.trace())
-print("||DFT^2 - DFT||: ", linalg.norm(dm@dm - dm))
+dm_norm = dm/dm.trace()
+print("||DFT^2 - DFT||: ", linalg.norm(dm_norm @ linalg.inv(ovlp) @ dm_norm - dm_norm))
 
 
 # propagate using GCP DMM zvode
+zvode_steps = 1000000
 gcp = GCP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, mu=mu, mf=mf)
-gcp.no_zvode(1000)
+gcp.no_zvode(zvode_steps)
 print("GCP Zvode trace: ", gcp.rho.trace())
-#gcp.purify
 nsteps = 100
-#gcp_zvode_norm_diff, gcp_zvode_rho_list = self_consistent_Aiken_zvode(h1e, gcp, nsteps)
-gcp_funm_norm_diff, gcp_funm_rho_list = self_consistent_Aiken_funm(h1e, gcp, nsteps)
+gcp_norm_diff, gcp_rho_list = gcp_self_consistent_Aiken_zvode(h1e, gcp, nsteps, gcp_single_step_zvode, zvode_steps)
 
 fig1 = plt.figure(1)
 ax11 = fig1.add_subplot(131)
-ax11.semilogy(gcp_funm_norm_diff, '*-')
+ax11.semilogy(gcp_norm_diff, '*-')
 ax11.set_xlabel("Iteration #")
 ax11.set_ylabel("||P_current - P_prev||")
 ax11.set_title("Conv. of P")
 
 ax12 = fig1.add_subplot(132)
-im = ax12.imshow(gcp_funm_rho_list[-1].real/gcp_funm_rho_list[-1].trace().real, origin='lower')
+im = ax12.imshow(gcp_rho_list[-1].real/gcp_rho_list[-1].trace().real, origin='lower')
 ax12.set_xlabel("i")
 ax12.set_ylabel("j")
 ax12.set_title("Converged P")
@@ -309,23 +180,25 @@ ax13.set_xlabel("j")
 ax13.set_title("DFT")
 fig1.colorbar(im, ax=ax13)
 
+#print("Final GCP mu: ", gcp_rho_list[-1].mu)
+print("Final GCP trace: ", gcp_rho_list[-1].trace())
+
 # propagate using CP DMM zvode
 cp = CP_DMM(H=h1e, dbeta=0.003, ovlp=ovlp, num_electrons=dm.trace(), mf=mf)
-cp.no_zvode(1000)
-#cp.purify()
+cp.no_zvode(zvode_steps)
 print("CP Zvode trace: ",cp.rho.trace())
 print("CP Zvode chemical potential: ", cp.no_get_mu())
-cp_funm_norm_diff, cp_funm_rho_list = cp_self_consistent_Aiken_funm(h1e, cp, nsteps)
+cp_norm_diff, cp_rho_list = cp_self_consistent_Aiken_zvode(h1e, cp, nsteps, cp_single_step_zvode, zvode_steps)
 
 fig2 = plt.figure(2)
 ax21 = fig2.add_subplot(131)
-ax21.semilogy(cp_funm_norm_diff, '*-')
+ax21.semilogy(cp_norm_diff, '*-')
 ax21.set_xlabel("Iteration #")
 ax21.set_ylabel("||P_current - P_prev||")
 ax21.set_title("Conv. of P")
 
 ax22 = fig2.add_subplot(132)
-im = ax22.imshow(cp_funm_rho_list[-1].real/cp_funm_rho_list[-1].trace().real, origin='lower')
+im = ax22.imshow(cp_rho_list[-1].real/cp_rho_list[-1].trace().real, origin='lower')
 ax22.set_xlabel("i")
 ax22.set_ylabel("j")
 ax22.set_title("Converged P")
@@ -336,5 +209,8 @@ im = ax23.imshow(dm.real/dm.trace().real, origin='lower')
 ax23.set_xlabel("j")
 ax23.set_title("DFT")
 fig2.colorbar(im, ax=ax23)
+
+#print("Final CP mu: ", cp_rho_list[-1].no_get_mu())
+print("Final CP trace: ", cp_rho_list[-1].trace())
 
 plt.show()
