@@ -25,10 +25,14 @@ class GCP_DMM(DMM):
 		except AttributeError:
 			raise AttributeError("MF not specified from DFT")
 
+		try:
+			self.num_electrons
+		except AttributeError:
+			raise AttributeError("Num electrons not specified")
+
 		# Create the initial density matrix
 		# self.rho = 0.5 * self.identity
-		self.rho = 0.5 * self.ovlp + 1j*np.zeros((11, 11))
-		self.num_electrons = [self.rho.trace()]
+		self.rho = self.num_electrons/self.ovlp.trace() * self.ovlp
 		self.y = -1/4*(self.H + self.mf.get_veff(self.mf.mol, self.rho) - self.mu*self.ovlp)
 		self.hexc = [self.mf.get_veff(self.mf.mol, self.rho)]
 
@@ -203,7 +207,7 @@ class GCP_DMM(DMM):
 		steps = 0
 		while solver.successful() and solver.t < self.dbeta*nsteps:
 			solver.integrate(solver.t + self.dbeta)
-			self.num_electrons.append(solver.y.reshape(self.rho.shape[0], self.rho.shape[0]).trace())
+			#self.num_electrons.append(solver.y.reshape(self.rho.shape[0], self.rho.shape[0]).trace())
 			#self.hexc.append(self.mf.get_veff(self.mf.mol, solver.y.reshape(self.rho.shape[0], self.rho.shape[0])))
 			steps += 1
 		#print("GCP Zvode steps: ", str(steps))
@@ -297,7 +301,7 @@ class GCP_DMM(DMM):
 
 			self.beta += self.dbeta
 			self.rho += (1/6)*self.dbeta*(k1+2*k2+2*k3+k4)
-			self.num_electrons.append(self.rho.trace())
+			#self.num_electrons.append(self.rho.trace())
 
 		return self
 

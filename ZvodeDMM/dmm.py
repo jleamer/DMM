@@ -83,3 +83,20 @@ class DMM:
 			self.rho = 3*rho_sq - 2*rho_cu
 
 		return self
+
+	def non_ortho_purify(self, niter):
+		"""
+		:return self: after iterating to make rho idempotent
+		"""
+		count = 0
+		while count <= niter:
+			count += 1
+			rho_sq = self.rho @ self.inv_ovlp @ self.rho
+			rho_cu = self.rho @ self.inv_ovlp @ rho_sq
+
+			if np.allclose(rho_sq, self.rho):
+				break
+
+			self.rho = 3*rho_sq - 2*rho_cu
+
+		return self

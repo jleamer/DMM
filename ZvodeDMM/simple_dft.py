@@ -32,10 +32,10 @@ def self_consistent_Aiken(h1e, gcp, nsteps):
         h = h1e + gcp.mf.get_veff(gcp.mf.mol, rho_)
         mu = gcp.mu
         arg = gcp.inv_ovlp@h
-        return ovlp @ linalg.inv(gcp.identity + linalg.expm(gcp.beta*(arg-mu*gcp.identity)))
-        #gcp_ = GCP_DMM(H=h, ovlp=gcp.ovlp, mu=gcp.mu, dbeta=0.003, mf=gcp.mf)
-        #gcp_.no_zvode(1000)
-        #return gcp_.rho
+        #return ovlp @ linalg.inv(gcp.identity + linalg.expm(gcp.beta*(arg-mu*gcp.identity)))
+        gcp_ = GCP_DMM(H=h, ovlp=gcp.ovlp, mu=gcp.mu, dbeta=0.003, mf=gcp.mf)
+        gcp_.no_zvode(1000)
+        return gcp_.rho.copy()
 
 
         #identity = numpy.identity(rho.shape[0])
