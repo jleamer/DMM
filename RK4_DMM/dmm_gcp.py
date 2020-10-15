@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from pyscf import gto, dft
 import numpy.ma as ma
 
-@njit
+
 def rhs(rho, h, inv_ovlp, identity, mu):
     """
     this function implements the rhs of the derivative expression for minimizing rho
@@ -24,7 +24,7 @@ def rhs(rho, h, inv_ovlp, identity, mu):
     return f
 
 
-@njit
+
 def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, mu, nsteps):
     """
     this function implements an RK4 method for calculating the final rho using the rhs
@@ -53,6 +53,9 @@ def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, mu, nsteps):
         k4 = rhs(temp_rho, h, inv_ovlp, identity, mu).copy()
 
         rho += (1/6)*dbeta*(k1 + 2*k2 + 2*k3 + k4)
+        rho_sq = rho @ inv_ovlp @ rho
+        rho_cu = rho_sq @ inv_ovlp @ rho
+        rho = 3*rho_sq - 2*rho_cu
 
     return rho
 
@@ -95,22 +98,18 @@ def exact_single_step(rho_, *, h1e, mf, beta, inv_ovlp, ovlp, mu, **kwargs):
 
 def steady_single_step(rho_, *, h1e, mf, inv_ovlp, mu, **kwargs):
     h = h1e + mf.get_veff(mf.mol, rho_)
-    rho = rho_ @ inv_ovlp @ h + inv_ovlp @ h @ rho_
-    rho += mu * rho_ @ inv_ovlp @ rho_ + mu * inv_ovlp @ rho_ @ rho_
-    rho += -rho_ @ inv_ovlp @ rho_ @ inv_ovlp @ h - inv_ovlp @ h @ inv_ovlp @ rho_ @ rho_
-    rho *= 1/(2*mu)
+    rho = (rho_ @ inv_ovlp @ h + mu*rho_ @ inv_ovlp @ rho_ - rho_ @ inv_ovlp @ rho_ @ inv_ovlp @ h)/(mu)
+    rho += rho.conj().T
+    rho /= 2
     return rho
 
-'''
-def steady_linear_single_step(rho_, *, h, mu, **kwargs):
-    rho = (rho_ @ h + h @ rho_ + 2*mu*rho_ @ rho_ - rho_ @ rho_ @ h - h @ rho_ @ rho_)/(2*mu)
-    return rho
-'''
+
 def steady_linear_single_step(rho_, *, h, mu, inv_ovlp, **kwargs):
     rho = (rho_ @ inv_ovlp @ h + mu*rho_ @ inv_ovlp @ rho_ - rho_ @ inv_ovlp @ rho_ @ inv_ovlp @ h)/(mu)
     rho += rho.conj().T
     rho /= 2
     return rho
+
 
 def linear_single_step(rho_, *, h, mu, inv_ovlp, rk4steps, dbeta, **kwargs):
     identity = np.identity(rho_.shape[0])
@@ -118,7 +117,7 @@ def linear_single_step(rho_, *, h, mu, inv_ovlp, rk4steps, dbeta, **kwargs):
     return rho
 
 
-def aitkens(rho, nsteps, single_step_func, func_args):
+def aitkens(rho, nsteps, single_step_func, **func_args):
     """
     function for performing the Aitken's delta-squared convergence method
     :param rho:                 the density matrix to start the convergence with

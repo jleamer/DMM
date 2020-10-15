@@ -42,6 +42,7 @@ def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps):
 
     for i in range(nsteps):
         rhocopy = rho.copy()
+
         k1 = rhs(rhocopy, h, inv_ovlp, identity).copy()
 
         temp_rho = rhocopy + 0.5*dbeta*k1
@@ -54,6 +55,10 @@ def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps):
         k4 = rhs(temp_rho, h, inv_ovlp, identity).copy()
 
         rho += (1/6)*dbeta*(k1 + 2*k2 + 2*k3 + k4)
+
+        rho_sq = rho @ inv_ovlp @ rho
+        rho_cu = rho_sq @ inv_ovlp @ rho
+        rho = 3*rho_sq - 2*rho_cu
 
     return rho
 
@@ -102,3 +107,9 @@ def aitkens(rho, nsteps, single_step_func, func_args):
             break
 
     return aitken_rho, norm_diff
+
+
+def get_mu(rho, h, inv_ovlp):
+    identity = np.identity(rho.shape[0])
+    temp = rho @ (identity - inv_ovlp @ rho)
+    return np.sum(inv_ovlp @ h * temp.T)/temp.trace()

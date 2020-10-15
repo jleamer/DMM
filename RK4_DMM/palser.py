@@ -122,9 +122,6 @@ def cp(num_electrons, H, nsteps):
         rho_sq = rho @ rho
         rho_cu = rho @ rho_sq
 
-        if rho.all() == rho_sq.all():
-            break
-
         c = (rho_sq - rho_cu).trace()/(rho - rho_sq).trace()
 
         if c >= 0.5:
