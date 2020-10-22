@@ -56,10 +56,6 @@ def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps):
 
         rho += (1/6)*dbeta*(k1 + 2*k2 + 2*k3 + k4)
 
-        rho_sq = rho @ inv_ovlp @ rho
-        rho_cu = rho_sq @ inv_ovlp @ rho
-        rho = 3*rho_sq - 2*rho_cu
-
     return rho
 
 
@@ -78,8 +74,31 @@ def single_step(rho_, *, h1e, mf, dbeta, inv_ovlp, rk4steps, **kwargs):
     rho = rk4(rhs, rho_, dbeta, h, inv_ovlp, identity, rk4steps)
     return rho
 
+def exact_single_step(rho_, *, h1e, mf, beta, inv_ovlp, ovlp, mu, **kwargs):
+    h = h1e + mf.get_veff(mf.mol, rho_)
+    mu = get_mu(rho_, h, inv_ovlp)
+    rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: 1/(1+np.exp(beta*(_ - mu))))
+    return rho
 
-def aitkens(rho, nsteps, single_step_func, func_args):
+def exact0_single_step(rho_, *, h1e, mf, ovlp, inv_ovlp, mu, **kwargs):
+    h = h1e + mf.get_veff(mf.mol, rho_)
+    mu = get_mu(rho_, h, inv_ovlp)
+    rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: _ <= mu)
+    return rho
+
+def get_mu(rho, h, inv_ovlp):
+    identity = np.identity(rho.shape[0])
+    temp = rho @ (identity - inv_ovlp @ rho)
+    return np.sum(inv_ovlp @ h * temp.T)/temp.trace()
+
+def steady_linear_single_step(rho_, *, h, mu, inv_ovlp, **kwargs):
+    mu = get_mu(rho_, h, inv_ovlp)
+    rho = (rho_ @ inv_ovlp @ h + mu*rho_ @ inv_ovlp @ rho_ - rho_ @ inv_ovlp @ rho_ @ inv_ovlp @ h)/(mu)
+    rho += rho.conj().T
+    rho /= 2
+    return rho
+
+def aitkens(rho, nsteps, single_step_func, **func_args):
     """
     function for performing the Aitken's delta-squared convergence method
     :param rho:                 the density matrix to start the convergence with
@@ -92,24 +111,19 @@ def aitkens(rho, nsteps, single_step_func, func_args):
     rho_0 = rho.copy()
     for i in range(nsteps):
         prev_aitken_rho = rho_0.copy()
-        rho_1 = single_step_func(rho_0, func_args)
-        rho_2 = single_step_func(rho_1, func_args)
+        rho_1 = single_step_func(rho_0, **func_args)
+        rho_2 = single_step_func(rho_1, **func_args)
 
         aitken_rho = rho_2 - (rho_2 - rho_1)**2 / ma.array(rho_2 - 2*rho_1 + rho_0)
         aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
 
         rho_0 = aitken_rho
+        func_args['mu'] = get_mu(rho_0, func_args['h1e'], func_args['inv_ovlp'])
 
         norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
 
-        if np.allclose(aitken_rho, prev_aitken_rho):
+        if np.allclose(aitken_rho, prev_aitken_rho) and i > 5:
             print("Iterations converged!")
             break
 
     return aitken_rho, norm_diff
-
-
-def get_mu(rho, h, inv_ovlp):
-    identity = np.identity(rho.shape[0])
-    temp = rho @ (identity - inv_ovlp @ rho)
-    return np.sum(inv_ovlp @ h * temp.T)/temp.trace()

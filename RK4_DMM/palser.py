@@ -109,11 +109,13 @@ def cp(num_electrons, H, nsteps):
     """
     identity = np.identity(H.shape[0], dtype=complex)
     size = identity.shape[0]
+    trace_list = []
 
     maxH, minH = greshgorin(H)
     mu_bar = H.trace()/size
     lamb = min(num_electrons/(maxH - mu_bar), (size - num_electrons)/(mu_bar - minH))
     rho = lamb/size * (mu_bar*identity - H) + num_electrons/size * identity
+    trace_list.append(rho.trace())
     E = np.sum(rho * H)
 
     steps = 0
