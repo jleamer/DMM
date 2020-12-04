@@ -26,6 +26,34 @@ def rhs(rho, H, inv_ovlp, identity):
     return f
 
 
+def non_linear_rhs(rho, h1e, inv_ovlp, identity, mf):
+    H = h1e + mf.get_veff(mf.mol, rho)
+    c = rho.dot(identity - inv_ovlp.dot(rho))
+    d = H.dot(c)
+    alpha = np.sum(inv_ovlp * d.T) / c.trace()
+    scaledH = -0.5 * (inv_ovlp.dot(H) - alpha * identity)
+    K = (identity - inv_ovlp.dot(rho)).dot(scaledH)
+    f = rho.dot(K) + K.conj().T.dot(rho)
+    return f
+
+def non_linear_rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps, mf):
+    for i in range(nsteps):
+        rhocopy = rho.copy()
+        k1 = rhs(rhocopy, h, inv_ovlp, identity, mf).copy()
+
+        temp_rho = rhocopy + 0.5*dbeta*k1
+        k2 = rhs(temp_rho, h, inv_ovlp, identity, mf).copy()
+
+        temp_rho = rhocopy + 0.5*dbeta*k2
+        k3 = rhs(temp_rho, h, inv_ovlp, identity, mf).copy()
+
+        temp_rho = rhocopy + dbeta*k3
+        k4 = rhs(temp_rho, h, inv_ovlp, identity, mf).copy()
+
+        rho += (1/6)*dbeta*(k1 + 2*k2 + 2*k3 + k4)
+
+    return rho
+
 def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps):
     """
     this function implements an RK4 method for calculating the final rho using the rhs
