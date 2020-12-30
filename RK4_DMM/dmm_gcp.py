@@ -112,7 +112,7 @@ def single_step(rho_, *, h1e, mf, dbeta, inv_ovlp, mu, rk4steps, **kwargs):
 
 def exact_single_step(rho_, *, h1e, mf, beta, inv_ovlp, ovlp, mu, **kwargs):
     h = h1e + mf.get_veff(mf.mol, rho_)
-    rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: 1/(1+np.exp(beta*(_ - mu))))
+    rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: np.exp(-beta*(_ - mu))/(1+np.exp(-beta*(_ - mu))))
     return rho
 
 def exact0_single_step(rho_, *, h1e, mf, ovlp, inv_ovlp, mu, **kwargs):

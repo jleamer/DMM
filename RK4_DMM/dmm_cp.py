@@ -8,7 +8,7 @@ from pyscf import gto, dft
 import numpy.ma as ma
 
 
-def rhs(rho, H, inv_ovlp, identity):
+def rhs(rho, H, inv_ovlp, identity, num_electrons, ovlp, mu, beta):
     """
     this function implements the rhs of the derivative for minimizing rho
     :param rho:
@@ -17,44 +17,89 @@ def rhs(rho, H, inv_ovlp, identity):
     :param identity:
     :return:
     """
-    c = rho.dot(identity-inv_ovlp.dot(rho))
-    d = H.dot(c)
-    alpha = np.sum(inv_ovlp*d.T)/c.trace()
-    scaledH = -0.5*(inv_ovlp.dot(H) - alpha*identity)
-    K = (identity - inv_ovlp.dot(rho)).dot(scaledH)
-    f = rho.dot(K) + K.conj().T.dot(rho)
-    return f
+    # calculate the prefactor
+    n = 2 * num_electrons / ovlp.trace()
+    '''
+    if beta == 0:
+        dmu = 0
+    else:
+        # Calculate dmu/dbeta
+        a = rho @ (identity - inv_ovlp @ rho / n) @ inv_ovlp @ H
+        a += a.conj().T
+        b = rho @ (identity - inv_ovlp @ rho / n)
+        b += b.conj().T
+        dmu = (a.trace() / b.trace() - mu) / beta
+    '''
+
+    # Calculate dmu/dbeta
+    a = rho @ (identity - inv_ovlp @ rho / n) @ inv_ovlp @ H
+    a += a.conj().T
+    b = rho @ (identity - inv_ovlp @ rho / n)
+    b += b.conj().T
+    dmu = (a.trace() / b.trace() - mu) / beta
+    # calculate dP/dbeta
+    scaledH = -0.5 * (inv_ovlp @ H - a.trace() / b.trace() * identity)
+
+    k = rho @ (identity - inv_ovlp @ rho / n) @ scaledH
+    dP = k + k.conj().T
+
+    return dP, 0
+
+def zvode_rhs(beta, x,  H, inv_ovlp, identity, num_electrons, ovlp):
+    mu = x[-1]
+    rho = x[:-1].reshape(*H.shape)
+    return np.append(*rhs(rho, H, inv_ovlp, identity, num_electrons, ovlp, mu, beta))
 
 
-def non_linear_rhs(rho, h1e, inv_ovlp, identity, mf):
+def non_linear_rhs(rho, h1e, inv_ovlp, identity, mf, num_electrons, ovlp, mu, beta):
+    # update H with new value of rho
     H = h1e + mf.get_veff(mf.mol, rho)
-    c = rho.dot(identity - inv_ovlp.dot(rho))
-    d = H.dot(c)
-    alpha = np.sum(inv_ovlp * d.T) / c.trace()
-    scaledH = -0.5 * (inv_ovlp.dot(H) - alpha * identity)
-    K = (identity - inv_ovlp.dot(rho)).dot(scaledH)
-    f = rho.dot(K) + K.conj().T.dot(rho)
-    return f
 
-def non_linear_rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps, mf):
+    # calculate the prefactor
+    n = 2*num_electrons/ovlp.trace()
+
+    if beta == 0:
+        dmu = 0
+    else:
+        # Calculate dmu/dbeta
+        a = rho @ (identity - inv_ovlp @ rho/n) @ inv_ovlp @ H
+        a += a.conj().T
+        b = rho @ (identity - inv_ovlp @ rho/n)
+        b += b.conj().T
+        dmu = (a.trace()/b.trace() - mu)/beta
+
+    # calculate dP/dbeta
+    scaledH = -0.5*(inv_ovlp @ H - (mu + dmu)*identity)
+
+    k = rho @ (identity - inv_ovlp @ rho/n) @ scaledH
+    dP = k + k.conj().T
+
+    return dP, dmu
+
+def non_linear_rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps, mf, num_electrons, ovlp, mu, beta):
     for i in range(nsteps):
         rhocopy = rho.copy()
-        k1 = rhs(rhocopy, h, inv_ovlp, identity, mf).copy()
+        k1, l1 = rhs(rhocopy, h, inv_ovlp, identity, mf, num_electrons, ovlp, mu, beta)
 
         temp_rho = rhocopy + 0.5*dbeta*k1
-        k2 = rhs(temp_rho, h, inv_ovlp, identity, mf).copy()
+        temp_mu = mu + 0.5*dbeta*l1
+        k2, l2 = rhs(temp_rho, h, inv_ovlp, identity, mf, num_electrons, ovlp, temp_mu, beta)
 
         temp_rho = rhocopy + 0.5*dbeta*k2
-        k3 = rhs(temp_rho, h, inv_ovlp, identity, mf).copy()
+        temp_mu = mu + 0.5*dbeta*l2
+        k3, l3 = rhs(temp_rho, h, inv_ovlp, identity, mf, num_electrons, ovlp, temp_mu, beta)
 
         temp_rho = rhocopy + dbeta*k3
-        k4 = rhs(temp_rho, h, inv_ovlp, identity, mf).copy()
+        temp_mu = mu + dbeta*l3
+        k4, l4 = rhs(temp_rho, h, inv_ovlp, identity, mf, num_electrons, ovlp, temp_mu, beta)
 
         rho += (1/6)*dbeta*(k1 + 2*k2 + 2*k3 + k4)
+        mu += (1/6)*dbeta*(l1 + 2*l2 + 2*l3 + l4)
+        beta += dbeta
 
-    return rho
+    return rho, mu
 
-def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps):
+def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps, num_electrons, ovlp, mu, beta):
     """
     this function implements an RK4 method for calculating the final rho using the rhs
     :param rhs:         the rhs function to use
@@ -67,24 +112,24 @@ def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps):
     :param nsteps:      the number of steps to propagate through; final beta will be dbeta*nsteps
     :return:            the final density matrix
     """
-
     for i in range(nsteps):
         rhocopy = rho.copy()
+        k1, l1 = rhs(rhocopy, h, inv_ovlp, identity, num_electrons, ovlp, mu, beta)
 
-        k1 = rhs(rhocopy, h, inv_ovlp, identity).copy()
+        temp_rho = rhocopy + 0.5 * dbeta * k1
+        k2, l2 = rhs(temp_rho, h, inv_ovlp, identity, num_electrons, ovlp, mu, beta)
 
-        temp_rho = rhocopy + 0.5*dbeta*k1
-        k2 = rhs(temp_rho, h, inv_ovlp, identity).copy()
+        temp_rho = rhocopy + 0.5 * dbeta * k2
+        k3, l3 = rhs(temp_rho, h, inv_ovlp, identity, num_electrons, ovlp, mu, beta)
 
-        temp_rho = rhocopy + 0.5*dbeta*k2
-        k3 = rhs(temp_rho, h, inv_ovlp, identity).copy()
+        temp_rho = rhocopy + dbeta * k3
+        k4, l4 = rhs(temp_rho, h, inv_ovlp, identity, num_electrons, ovlp, mu, beta)
 
-        temp_rho = rhocopy + dbeta*k3
-        k4 = rhs(temp_rho, h, inv_ovlp, identity).copy()
+        rho += (1 / 6) * dbeta * (k1 + 2 * k2 + 2 * k3 + k4)
+        mu += (1 / 6) * dbeta * (l1 + 2 * l2 + 2 * l3 + l4)
+        beta += dbeta
 
-        rho += (1/6)*dbeta*(k1 + 2*k2 + 2*k3 + k4)
-
-    return rho
+    return rho, mu
 
 
 def single_step(rho_, *, h1e, mf, dbeta, inv_ovlp, rk4steps, **kwargs):
@@ -102,10 +147,10 @@ def single_step(rho_, *, h1e, mf, dbeta, inv_ovlp, rk4steps, **kwargs):
     rho = rk4(rhs, rho_, dbeta, h, inv_ovlp, identity, rk4steps)
     return rho
 
-def exact_single_step(rho_, *, h1e, mf, beta, inv_ovlp, ovlp, mu, **kwargs):
+def exact_single_step(rho_, *, h1e, mf, beta, inv_ovlp, ovlp, mu, num_electrons, **kwargs):
     h = h1e + mf.get_veff(mf.mol, rho_)
-    mu = get_mu(rho_, h, inv_ovlp)
-    rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: 1/(1+np.exp(beta*(_ - mu))))
+    mu = get_mu(rho_, h, inv_ovlp, num_electrons, ovlp)
+    rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: np.exp(-beta*(_ - mu))/(1+np.exp(-beta*(_ - mu))))
     return rho
 
 def exact0_single_step(rho_, *, h1e, mf, ovlp, inv_ovlp, mu, **kwargs):
@@ -114,14 +159,25 @@ def exact0_single_step(rho_, *, h1e, mf, ovlp, inv_ovlp, mu, **kwargs):
     rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: _ <= mu)
     return rho
 
-def get_mu(rho, h, inv_ovlp):
+def get_mu(rho, h, inv_ovlp, num_electrons, ovlp):
     identity = np.identity(rho.shape[0])
-    temp = rho @ (identity - inv_ovlp @ rho)
-    return np.sum(inv_ovlp @ h * temp.T)/temp.trace()
+    n = 2 * num_electrons / ovlp.trace()
+    c = rho @ (n * identity - inv_ovlp @ rho)
+    d = h @ c
+    alpha = np.sum(inv_ovlp * d.T) / c.trace()
+    return alpha
 
-def steady_linear_single_step(rho_, *, h, mu, inv_ovlp, **kwargs):
+def steady_linear_single_step(rho_, *, h, inv_ovlp, **kwargs):
     mu = get_mu(rho_, h, inv_ovlp)
     rho = (rho_ @ inv_ovlp @ h + mu*rho_ @ inv_ovlp @ rho_ - rho_ @ inv_ovlp @ rho_ @ inv_ovlp @ h)/(mu)
+    rho += rho.conj().T
+    rho /= 2
+    return rho
+
+def steady_single_step(rho_, *, h, inv_ovlp, mf, **kwargs):
+    H = h + mf.get_veff(mf.mol, rho_)
+    mu = get_mu(rho_, H, inv_ovlp)
+    rho = (rho_ @ inv_ovlp @ H + mu*rho_ @ inv_ovlp @ rho_ - rho_ @ inv_ovlp @ rho_ @ inv_ovlp @ H)/(mu)
     rho += rho.conj().T
     rho /= 2
     return rho
@@ -146,7 +202,7 @@ def aitkens(rho, nsteps, single_step_func, **func_args):
         aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
 
         rho_0 = aitken_rho
-        func_args['mu'] = get_mu(rho_0, func_args['h1e'], func_args['inv_ovlp'])
+        func_args['mu'] = get_mu(rho_0, func_args['h1e'], func_args['inv_ovlp'], func_args['num_electrons'], func_args['ovlp'])
 
         norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
 
