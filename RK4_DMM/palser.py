@@ -39,6 +39,15 @@ def generate_H(n_cutoff, size, b, a):
     return H
 
 
+def huckel_hamiltonian(alpha, beta, size):
+    off_diagonals = beta*np.ones(size-1)
+    diagonal = alpha*np.ones(size)
+    H = sparse.diags([off_diagonals, diagonal, off_diagonals], [-1, 0, 1], format='coo', dtype=complex).toarray()
+    H[0][size-1] = beta
+    H[size-1][0] = beta
+    return H
+
+
 def greshgorin(H):
     """
     function for estimating the maximum and minimum of H's spectrum

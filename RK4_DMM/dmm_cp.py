@@ -30,7 +30,6 @@ def rhs(rho, H, inv_ovlp, identity, num_electrons, ovlp, mu, beta):
         b += b.conj().T
         dmu = (a.trace() / b.trace() - mu) / beta
     '''
-
     # Calculate dmu/dbeta
     a = rho @ (identity - inv_ovlp @ rho / n) @ inv_ovlp @ H
     a += a.conj().T
@@ -43,7 +42,7 @@ def rhs(rho, H, inv_ovlp, identity, num_electrons, ovlp, mu, beta):
     k = rho @ (identity - inv_ovlp @ rho / n) @ scaledH
     dP = k + k.conj().T
 
-    return dP, 0
+    return dP, dmu
 
 def zvode_rhs(beta, x,  H, inv_ovlp, identity, num_electrons, ovlp):
     mu = x[-1]
@@ -68,13 +67,21 @@ def non_linear_rhs(rho, h1e, inv_ovlp, identity, mf, num_electrons, ovlp, mu, be
         b += b.conj().T
         dmu = (a.trace()/b.trace() - mu)/beta
 
+    '''
+    a = rho @ (identity - inv_ovlp @ rho / n) @ inv_ovlp @ H
+    a += a.conj().T
+    b = rho @ (identity - inv_ovlp @ rho / n)
+    b += b.conj().T
+    dmu = (a.trace() / b.trace() - mu) / beta
+    '''
     # calculate dP/dbeta
-    scaledH = -0.5*(inv_ovlp @ H - (mu + dmu)*identity)
+    scaledH = -0.5*(inv_ovlp @ H - a.trace() / b.trace() * identity)
+    #scaledH = -0.5*(inv_ovlp @ H - (beta*dmu + mu)*identity)
 
     k = rho @ (identity - inv_ovlp @ rho/n) @ scaledH
     dP = k + k.conj().T
 
-    return dP, dmu
+    return dP, 0
 
 def non_linear_rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps, mf, num_electrons, ovlp, mu, beta):
     for i in range(nsteps):
@@ -150,7 +157,9 @@ def single_step(rho_, *, h1e, mf, dbeta, inv_ovlp, rk4steps, **kwargs):
 def exact_single_step(rho_, *, h1e, mf, beta, inv_ovlp, ovlp, mu, num_electrons, **kwargs):
     h = h1e + mf.get_veff(mf.mol, rho_)
     mu = get_mu(rho_, h, inv_ovlp, num_electrons, ovlp)
-    rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: np.exp(-beta*(_ - mu))/(1+np.exp(-beta*(_ - mu))))
+    #print(mu)
+    rho = 2 * num_electrons * ovlp / ovlp.trace() @ linalg.funm(inv_ovlp @ h, lambda _: np.exp(-beta*(_ - mu))/(1+np.exp(-beta*(_ - mu))))
+    #rho *= num_electrons/rho.trace()
     return rho
 
 def exact0_single_step(rho_, *, h1e, mf, ovlp, inv_ovlp, mu, **kwargs):
@@ -161,8 +170,8 @@ def exact0_single_step(rho_, *, h1e, mf, ovlp, inv_ovlp, mu, **kwargs):
 
 def get_mu(rho, h, inv_ovlp, num_electrons, ovlp):
     identity = np.identity(rho.shape[0])
-    n = 2 * num_electrons / ovlp.trace()
-    c = rho @ (n * identity - inv_ovlp @ rho)
+    n = num_electrons / rho.trace()
+    c = rho @ (identity - inv_ovlp @ rho / n)
     d = h @ c
     alpha = np.sum(inv_ovlp * d.T) / c.trace()
     return alpha
