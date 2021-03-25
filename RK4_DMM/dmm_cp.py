@@ -19,9 +19,13 @@ def rhs(rho, H, inv_ovlp, identity, num_electrons, ovlp, mu, beta):
     """
     # calculate the prefactor
     n = 2 * num_electrons / ovlp.trace()
-    '''
+
     if beta == 0:
         dmu = 0
+        a = rho @ (identity - inv_ovlp @ rho / n) @ inv_ovlp @ H
+        a += a.conj().T
+        b = rho @ (identity - inv_ovlp @ rho / n)
+        b += b.conj().T
     else:
         # Calculate dmu/dbeta
         a = rho @ (identity - inv_ovlp @ rho / n) @ inv_ovlp @ H
@@ -29,6 +33,7 @@ def rhs(rho, H, inv_ovlp, identity, num_electrons, ovlp, mu, beta):
         b = rho @ (identity - inv_ovlp @ rho / n)
         b += b.conj().T
         dmu = (a.trace() / b.trace() - mu) / beta
+
     '''
     # Calculate dmu/dbeta
     a = rho @ (identity - inv_ovlp @ rho / n) @ inv_ovlp @ H
@@ -36,12 +41,12 @@ def rhs(rho, H, inv_ovlp, identity, num_electrons, ovlp, mu, beta):
     b = rho @ (identity - inv_ovlp @ rho / n)
     b += b.conj().T
     dmu = (a.trace() / b.trace() - mu) / beta
+    '''
     # calculate dP/dbeta
     scaledH = -0.5 * (inv_ovlp @ H - a.trace() / b.trace() * identity)
 
     k = rho @ (identity - inv_ovlp @ rho / n) @ scaledH
     dP = k + k.conj().T
-
     return dP, dmu
 
 def zvode_rhs(beta, x,  H, inv_ovlp, identity, num_electrons, ovlp):
@@ -59,6 +64,10 @@ def non_linear_rhs(rho, h1e, inv_ovlp, identity, mf, num_electrons, ovlp, mu, be
 
     if beta == 0:
         dmu = 0
+        a = rho @ (identity - inv_ovlp @ rho / n) @ inv_ovlp @ H
+        a += a.conj().T
+        b = rho @ (identity - inv_ovlp @ rho / n)
+        b += b.conj().T
     else:
         # Calculate dmu/dbeta
         a = rho @ (identity - inv_ovlp @ rho/n) @ inv_ovlp @ H
@@ -81,9 +90,13 @@ def non_linear_rhs(rho, h1e, inv_ovlp, identity, mf, num_electrons, ovlp, mu, be
     k = rho @ (identity - inv_ovlp @ rho/n) @ scaledH
     dP = k + k.conj().T
 
-    return dP, 0
+    return dP, dmu
 
 def non_linear_rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps, mf, num_electrons, ovlp, mu, beta):
+    list_H = []
+    rhocopy = rho.copy()
+    curr_H = h + mf.get_veff(mf.mol, rhocopy)
+    list_H.append(curr_H)
     for i in range(nsteps):
         rhocopy = rho.copy()
         k1, l1 = rhs(rhocopy, h, inv_ovlp, identity, mf, num_electrons, ovlp, mu, beta)
@@ -103,8 +116,10 @@ def non_linear_rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps, mf, num_elect
         rho += (1/6)*dbeta*(k1 + 2*k2 + 2*k3 + k4)
         mu += (1/6)*dbeta*(l1 + 2*l2 + 2*l3 + l4)
         beta += dbeta
+        rhocopy = rho.copy()
+        list_H.append(h + mf.get_veff(mf.mol, rhocopy))
 
-    return rho, mu
+    return rho, mu, list_H
 
 def rk4(rhs, rho, dbeta, h, inv_ovlp, identity, nsteps, num_electrons, ovlp, mu, beta):
     """
@@ -156,10 +171,11 @@ def single_step(rho_, *, h1e, mf, dbeta, inv_ovlp, rk4steps, **kwargs):
 
 def exact_single_step(rho_, *, h1e, mf, beta, inv_ovlp, ovlp, mu, num_electrons, **kwargs):
     h = h1e + mf.get_veff(mf.mol, rho_)
-    mu = get_mu(rho_, h, inv_ovlp, num_electrons, ovlp)
+    #mu = get_mu(rho_, h, inv_ovlp, num_electrons, ovlp)
     #print(mu)
-    rho = 2 * num_electrons * ovlp / ovlp.trace() @ linalg.funm(inv_ovlp @ h, lambda _: np.exp(-beta*(_ - mu))/(1+np.exp(-beta*(_ - mu))))
-    #rho *= num_electrons/rho.trace()
+    #rho = 2 * num_electrons * ovlp / ovlp.trace() @ linalg.funm(inv_ovlp @ h, lambda _: np.exp(-beta*(_ - mu))/(1+np.exp(-beta*(_ - mu))))
+    rho = ovlp @ linalg.funm(inv_ovlp @ h, lambda _: np.exp(-beta*(_ - mu))/(1+np.exp(-beta*(_ - mu))))
+    rho *= num_electrons/rho.trace()
     return rho
 
 def exact0_single_step(rho_, *, h1e, mf, ovlp, inv_ovlp, mu, **kwargs):
@@ -211,7 +227,7 @@ def aitkens(rho, nsteps, single_step_func, **func_args):
         aitken_rho = ma.filled(aitken_rho, fill_value=rho_2)
 
         rho_0 = aitken_rho
-        func_args['mu'] = get_mu(rho_0, func_args['h1e'], func_args['inv_ovlp'], func_args['num_electrons'], func_args['ovlp'])
+        #func_args['mu'] = get_mu(rho_0, func_args['h1e'], func_args['inv_ovlp'], func_args['num_electrons'], func_args['ovlp'])
 
         norm_diff.append(linalg.norm(aitken_rho - prev_aitken_rho))
 
