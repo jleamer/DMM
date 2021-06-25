@@ -1,6 +1,6 @@
 import numpy as np
 from numba import njit
-from scipy import linalg
+from scipy import linalg, sparse
 
 
 ########################################################################################################################
@@ -19,6 +19,11 @@ def relative_diff(psi_next, psi):
     """
     return np.linalg.norm(psi_next - psi) / np.linalg.norm(psi_next)
 
+
+def s_relative_diff(psi_next, psi):
+    #psi_next = psi_next.toarray()
+    #psi = psi.toarray()
+    return sparse.linalg.norm(psi_next - psi) / sparse.linalg.norm(psi_next)
 
 class CAdaptiveDMM(object):
     """
@@ -124,6 +129,85 @@ class CAdaptiveDMM(object):
 
         return self.rho
 
+    def s_propagate(self, beta_final):
+        """
+        Inverse temperature propagation of the density matrix saved in self.rho
+        :param beta_final: until what beta to propagate the rho
+        :return: self.rho
+        """
+        e_n = self.e_n
+        e_n_1 = self.e_n_1
+        e_n_2 = self.e_n_2
+        previous_dbeta = self.previous_dbeta
+
+        # copy the initial condition into the propagation array self.rho_next
+        #np.copyto(self.rho_next, self.rho)
+        self.rho_next = sparse.csr_matrix(self.rho, copy=True)
+
+        while self.beta < beta_final:
+
+            ############################################################################################################
+            #
+            #   Adaptive scheme propagator
+            #
+            ############################################################################################################
+
+            # propagate the rho by a single dbeta
+            self.single_step_propagation(self.dbeta)
+
+            e_n = s_relative_diff(self.rho_next, self.rho)
+
+            while e_n > self.epsilon:
+                # the error is to high, decrease the time step and propagate with the new step
+
+                self.dbeta *= self.epsilon / e_n
+
+                #np.copyto(self.rho_next, self.rho)
+                self.rho_next = sparse.csr_matrix(self.rho, copy=True)
+
+                self.single_step_propagation(self.dbeta)
+
+                e_n = s_relative_diff(self.rho_next.toarray(), self.rho.toarray())
+
+            # accept the current density matrix
+            #np.copyto(self.rho.toarray(), self.rho_next.toarray())
+            self.rho = sparse.csr_matrix(self.rho_next, copy=True)
+
+            # save self.dbeta for monitoring purpose
+            self.beta_increments.append(self.dbeta)
+
+            # increment time
+            self.beta += self.dbeta
+
+            ############################################################################################################
+            #
+            #   Update step via the Evolutionary PID controller
+            #
+            ############################################################################################################
+
+            # overwrite the zero values of e_n_1 and e_n_2
+            previous_dbeta = (previous_dbeta if previous_dbeta else self.dbeta)
+            e_n_1 = (e_n_1 if e_n_1 else e_n)
+            e_n_2 = (e_n_2 if e_n_2 else e_n)
+
+            # the adaptive time stepping method from
+            #   http://www.mathematik.uni-dortmund.de/~kuzmin/cfdintro/lecture8.pdf
+            # self.dbeta *= (e_n_1 / e_n) ** 0.075 * (self.epsilon / e_n) ** 0.175 * (e_n_1 ** 2 / e_n / e_n_2) ** 0.01
+
+            # the adaptive time stepping method from
+            #   https://linkinghub.elsevier.com/retrieve/pii/S0377042705001123
+            self.dbeta *= (self.epsilon ** 2 / e_n / e_n_1 * previous_dbeta / self.dbeta) ** (1 / 12.)
+
+            # update the error estimates in order to go next to the next step
+            e_n_2, e_n_1 = e_n_1, e_n
+
+        # save the error estimates
+        self.previous_dbeta = previous_dbeta
+        self.e_n = e_n
+        self.e_n_1 = e_n_1
+        self.e_n_2 = e_n_2
+
+        return self.rho
 
 ########################################################################################################################
 #

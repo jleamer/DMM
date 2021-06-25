@@ -4,6 +4,7 @@ from scipy import sparse, linalg
 from adaptive_step_dmm import CAdaptiveDMM
 from pyscf import gto, dft
 import numpy.ma as ma
+import time
 
 # Class for linear GC RK4 method
 class CAdaptive_GC_RK4(CAdaptiveDMM):
@@ -38,12 +39,14 @@ class CAdaptive_GC_RK4(CAdaptiveDMM):
         # call the parent's constructor
         CAdaptiveDMM.__init__(self, **kwargs)
 
+
     def rhs(self, rho):
         """
         Method implements the rhs of the derivative expression for minimizing rho
         """
         k = (self.identity - self.inv_ovlp @ rho) @ self.scaledH
         return rho @ k + k.conj().T @ rho
+
 
     def single_step_propagation(self, dbeta):
         """
@@ -63,6 +66,73 @@ class CAdaptive_GC_RK4(CAdaptiveDMM):
         k4 = self.rhs(rho + dbeta * k3)
 
         rho += (1 / 6) * dbeta * (k1 + 2 * k2 + 2 * k3 + k4)
+
+
+# Class for linear GC RK4 method using sparse matrices
+class CAdaptive_GC_RK4_S(CAdaptiveDMM):
+    """
+    DMM GCP via RK4.
+    Using Jacob's code
+    """
+
+    def __init__(self, *, ovlp, H, mu, **kwargs):
+        """
+        :param inv_ovlp: the overlap matrix
+        :param H: Hamiltonian
+        :param mu: chemical potential
+        """
+        assert ovlp.shape == H.shape
+
+        # saving arguments
+        self.ovlp = sparse.csr_matrix(ovlp)
+        self.H = sparse.csr_matrix(H)
+        self.mu = mu
+
+        # the inverse overlap matrix
+        self.inv_ovlp = sparse.csr_matrix(linalg.inv(ovlp))
+
+        self.identity = sparse.csr_matrix(np.identity(self.H.shape[0]))
+
+        self.scaledH = -0.5 * (self.inv_ovlp @ self.H - self.mu * self.identity)
+
+        # initial density matrix
+        self.rho = 0.5 * self.ovlp
+
+        """
+        # Save sparse copies of matrices for testing
+        self.sparse_ovlp = sparse.csr_matrix(self.ovlp)
+        self.sparse_scaledH = sparse.csr_matrix(self.scaledH)
+        self.sparse_inv_ovlp = sparse.csr_matrix(self.inv_ovlp)
+        self.sparse_rho = sparse.csr_matrix(self.rho)
+        self.sparse_id = sparse.csr_matrix(self.identity)
+        """
+        # call the parent's constructor
+        CAdaptiveDMM.__init__(self, **kwargs)
+
+        # override rho_next from parent constructor
+        self.rho_next = sparse.csr_matrix(self.rho, copy=True)
+
+    def rhs(self, rho):
+        k = (self.identity - self.inv_ovlp * rho) * self.scaledH
+        return rho * k + k.conj().T * rho
+
+    def single_step_propagation(self, dbeta):
+        """
+        Propagate self.rho_next by a single step using RK4
+        :param dbeta: a step size in inverse temperature
+        :return: None
+        """
+        # alias
+        rho = self.rho_next
+        k1 = self.rhs(rho)
+
+        k2 = self.rhs(rho + 0.5 * dbeta * k1)
+
+        k3 = self.rhs(rho + 0.5 * dbeta * k2)
+
+        k4 = self.rhs(rho + dbeta * k3)
+
+        self.rho_next += (1 / 6) * dbeta * (k1 + 2 * k2 + 2 * k3 + k4)
 
 # Class for non linear GC RK4 method
 class CAdaptive_GC_RK4_NL(CAdaptiveDMM):
