@@ -12,7 +12,7 @@ alpha = np.random.random()
 gamma = np.random.random()
 
 # define the dimensions of the Hamiltonian and how many elements to consider before cutoff
-size = 100
+size = 200
 
 def huckel_hamiltonian(alpha, gamma, size):
     H = sparse.diags([gamma, alpha, gamma], [-1, 0, 1], shape=(size, size)).toarray()
@@ -35,6 +35,7 @@ ovlp = np.identity(H.shape[0])
 gcp = CAdaptive_GC_RK4(ovlp=ovlp, H=H, mu=mu, dbeta=dbeta, epsilon=1e-1)
 
 s_gcp = CAdaptive_GC_RK4_S(ovlp=ovlp, H=H, mu=mu, dbeta=dbeta, epsilon=1e-1)
+print(s_gcp.inv_ovlp.count_nonzero())
 
 start = time.time()
 gcp.propagate(beta)

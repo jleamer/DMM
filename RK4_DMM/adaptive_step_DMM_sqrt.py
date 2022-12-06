@@ -5,7 +5,7 @@ from scipy import linalg, sparse
 
 ########################################################################################################################
 #
-#   Abstract base class for adaptive step method
+#   Abstract base class for adaptive step method using sqrt(P)
 #
 ########################################################################################################################
 @njit
@@ -22,21 +22,22 @@ def relative_diff(psi_next, psi):
     #return np.abs(np.trace(psi_next) - np.trace(psi))
 
 
-class CAdaptiveDMM(object):
+class CAdaptiveDMMsqrt():
     """
     Abstract base class for adaptive spet-method implementation for DMM.
 
     Child classes must implement tge method single_step_propagation(self, dbeta),
     where a method for the single step propagation is implemented.
     """
-
     def __init__(self, *, dbeta, beta=0, epsilon=1e-3):
         """
-        :param dbeta: Initial inverse temperature step
-        :param epsilon: relative error tolerance
+        :param dbeta:    initial step size of inverse temperature
+        :param beta:     initial value of inverse temperature
+        :param epsilon:  error tolerance
         """
-        self.beta = beta
+        # Store variables passed to the constructor
         self.dbeta = dbeta
+        self.beta = beta
         self.epsilon = epsilon
 
         # the relative change estimators for the time adaptive scheme
@@ -47,12 +48,12 @@ class CAdaptiveDMM(object):
         # list of self.dbeta to monitor how the adaptive step method is working
         self.beta_increments = []
 
-        # copy of the density matrix
-        self.rho_next = np.empty_like(self.rho)
-        
-        # energy
+        # copy of the density matrix sqrt
+        self.omega_next = np.empty_like(self.omega)
+
+        # Store variables to be tracked as system propagates
         self.energy = np.trace(self.rho @ self.inv_ovlp @ self.H)
-        self.energy_vals = [self.energy,]
+        self.energy_vals = [self.energy, ]
         self.eigenvalues = [np.linalg.eigvalsh(self.rho)]
         self.num_electron_list = [self.num_electrons]
         self.mu_list = [self.mu]
@@ -72,7 +73,7 @@ class CAdaptiveDMM(object):
         previous_dbeta = self.previous_dbeta
 
         # copy the initial condition into the propagation array self.rho_next
-        np.copyto(self.rho_next, self.rho)
+        np.copyto(self.omega_next, self.omega)
 
         while self.beta < beta_final:
 
@@ -84,29 +85,33 @@ class CAdaptiveDMM(object):
 
             # propagate the rho by a single dbeta
             self.single_step_propagation(self.dbeta)
-
-            e_n = relative_diff(self.rho_next, self.rho)
-            #e_n = abs(self.energy_next / self.energy - 1)
+            #temp = self.q_next.conj().T @ self.q_next
+            #temp2 = self.q.conj().T @ self.q
+            #e_n = relative_diff(temp, temp2)
+            e_n = relative_diff(self.omega_next, self.omega)
 
             while e_n > self.epsilon:
-                # the error is to high, decrease the time step and propagate with the new step
+                # the error is too high, decrease the time step and propagate with the new step
 
                 self.dbeta *= self.epsilon / e_n
 
-                np.copyto(self.rho_next, self.rho)
+                np.copyto(self.omega_next, self.omega)
                 self.single_step_propagation(self.dbeta)
-
-                e_n = relative_diff(self.rho_next, self.rho)
-                #e_n = abs(self.energy_next / self.energy - 1)
+                #temp = self.q_next.conj().T @ self.q_next
+                #temp2 = self.q.conj().T @ self.q
+                #e_n = relative_diff(temp, temp2)
                 #print(e_n)
+                e_n = relative_diff(self.omega_next, self.omega)
 
-            # accept the current density matrix
+            # if the energy is increasing stop and only keep last iteration
             if self.energy_next > self.energy:
                 print("Energy_next > energy")
                 break
             print("=========================")
 
-            np.copyto(self.rho, self.rho_next)
+            # Accept new value of omega and update tracked variables
+            np.copyto(self.omega, self.omega_next)
+            self.rho = self.omega.conj().T @ self.omega
             self.energy = self.energy_next
             self.energy_vals.append(self.energy)
             #self.eigenvalues.append(np.linalg.eigvalsh(self.rho))
@@ -154,130 +159,4 @@ class CAdaptiveDMM(object):
         self.e_n_1 = e_n_1
         self.e_n_2 = e_n_2
 
-        return self.rho
-
-
-########################################################################################################################
-#
-#   Specific DMM method
-#
-########################################################################################################################
-
-
-class CAdaptive_GCP_RK4(CAdaptiveDMM):
-    """
-    DMM GCP via RK4.
-    Using Jacob's code
-    """
-
-    def __init__(self, *, ovlp, H, mu, **kwargs):
-        """
-        :param inv_ovlp: the overlap matrix
-        :param H: Hamiltonian
-        :param mu: chemical potential
-        """
-        assert ovlp.shape == H.shape
-
-        # saving arguments
-        self.ovlp = ovlp
-        self.H = H
-        self.mu = mu
-
-        # the inverse overlap matrix
-        self.inv_ovlp = linalg.inv(ovlp)
-
-        self.identity = np.identity(self.H.shape[0])
-
-        self.scaledH = -0.5 * (self.inv_ovlp @ self.H - self.mu * self.identity)
-
-        # initial density matrix
-        self.rho = 0.5 * self.ovlp
-
-        # call the parent's constructor
-        CAdaptiveDMM.__init__(self, **kwargs)
-
-    def rhs(self, rho):
-        """
-        Method implements the rhs of the derivative expression for minimizing rho
-        """
-        k = (self.identity - self.inv_ovlp @ rho) @ self.scaledH
-        return rho @ k + k.conj().T @ rho
-
-    def single_step_propagation(self, dbeta):
-        """
-        Propagate self.rho_next by a single step using RK4
-        :param dbeta: a step size in inverse temperature
-        :return: None
-        """
-        # alias
-        rho = self.rho_next
-
-        k1 = self.rhs(rho)
-
-        k2 = self.rhs(rho + 0.5 * dbeta * k1)
-
-        k3 = self.rhs(rho + 0.5 * dbeta * k2)
-
-        k4 = self.rhs(rho + dbeta * k3)
-
-        rho += (1 / 6) * dbeta * (k1 + 2 * k2 + 2 * k3 + k4)
-
-
-########################################################################################################################
-#
-#   Test using the Huckel model (Using Jacob's code)
-#
-########################################################################################################################
-
-
-if __name__ == '__main__':
-    from scipy import sparse
-    import matplotlib.pyplot as plt
-
-    # First generate a random hamiltonian of the Huckel model
-    # i.e. alpha on the diagonal, and gamma on the off-diagonals to represent nearest neighbors
-    #    for now use random alpha and gamma
-    np.random.seed(75)
-    alpha = np.random.random()
-    gamma = np.random.random()
-
-    # define the dimensions of the Hamiltonian and how many elements to consider before cutoff
-    size = 50
-
-
-    def huckel_hamiltonian(alpha, gamma, size):
-        H = sparse.diags([gamma, alpha, gamma], [-1, 0, 1], shape=(size, size)).toarray()
-        H[0][size - 1] = gamma
-        H[size - 1][0] = gamma
-        return H
-
-
-    H = huckel_hamiltonian(alpha, gamma, size)
-
-    # define a chemical potential mu
-    mu = 0.45
-
-    # Fermi-Dirac - this simulates finite temperature
-    beta = 300
-    ferm_exact = linalg.funm(H, lambda _: np.exp(-beta * (_ - mu)) / (1 + np.exp(-beta * (_ - mu))))
-
-    numsteps = 10000
-    dbeta = beta / numsteps
-    ovlp = np.identity(H.shape[0])
-
-    # GCP propagation
-    gcp = CAdaptive_GCP_RK4(ovlp=ovlp, H=H, mu=mu, dbeta=dbeta, epsilon=1e-1)
-
-    gcp.propagate(beta)
-
-    plt.title('Populations')
-    plt.plot(linalg.eigvalsh(gcp.rho), '*-', label='GCP')
-    plt.plot(linalg.eigvalsh(ferm_exact), '*-', label='FD')
-    plt.legend()
-    plt.show()
-
-    plt.title("Variable step method in action")
-    plt.plot(gcp.beta_increments, '*-')
-    plt.xlabel('steps')
-    plt.ylabel('dbeta')
-    plt.show()
+        return self.omega
