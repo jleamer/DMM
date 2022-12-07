@@ -111,7 +111,10 @@ class CAdaptive_C_RK4_sqrt(CAdaptiveDMMsqrt):
         omega += (1 / 6) * dbeta * (k1 + 2 * k2 + 2 * k3 + k4)
         self.mu += (1 / 6) * dbeta * (l1 + 2 * l2 + 2 * l3 + l4)
         rho = omega.conj().T @ omega
-        self.cv_next = -(self.beta + self.dbeta) ** 2 * np.trace(rho @ self.inv_ovlp @ self.H)
+        temp = self.rhs(omega)[0]
+        trace_arg = temp.conj().T @ self.omega
+        trace_arg += trace_arg.conj().T
+        self.cv_next = -(self.beta + self.dbeta) ** 2 * np.trace(trace_arg @ self.inv_ovlp @ self.H)
         """
         self.rho_next = self.pos_pres_rhs(self.rho_next)
         """
