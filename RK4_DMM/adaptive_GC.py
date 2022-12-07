@@ -77,7 +77,6 @@ class CAdaptive_GC_RK4(CAdaptiveDMM):
 
         rho += (1 / 6) * dbeta * (k1 + 2 * k2 + 2 * k3 + k4)
         self.energy_next = np.trace(rho @ self.inv_ovlp @ self.H)
-        self.cv_next = -self.beta ** 2 * np.trace(self.rhs(rho) @ self.inv_ovlp @ self.H)
         """
         self.rho_next = self.pos_pres_rhs(self.rho_next)
         self.energy_next = np.trace(self.rho_next @ self.inv_ovlp @ self.H)
