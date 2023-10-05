@@ -38,11 +38,13 @@ class CAdaptive_GC_RK4_sqrt(CAdaptiveDMMsqrt):
         self.scaledH = -0.5 * (self.inv_ovlp @ self.H - self.mu * self.identity)
 
         self.num_electrons = self.rho.trace()
-        # num_electrons list
         self.num_electron_list = [self.rho.trace()]
 
         self.rho_list = [self.rho]
         self.omega_list = [self.omega]
+
+        # We use S^-1 @ H so much, so we define it here
+        self.A = self.inv_ovlp @ self.H
 
         # call the parent's constructor
         CAdaptiveDMMsqrt.__init__(self, **kwargs)
@@ -60,11 +62,87 @@ class CAdaptive_GC_RK4_sqrt(CAdaptiveDMMsqrt):
         self.count += 1
         domega = q @ (self.identity - (temp @ temp)) @ self.scaledH
 
-        indx = np.abs(domega) < self.tol
-        domega[indx] = 0
+        #indx = np.abs(domega) < self.tol
+        #domega[indx] = 0
 
-        self.sparsity.append(np.sum(indx) / self.H.shape[0] ** 2)
+        #self.sparsity.append(np.sum(indx) / self.H.shape[0] ** 2)
         return domega
+
+    def single_step_rk2(self, dbeta):
+        """
+        Propagate self.rho_next by a single step using RK4
+        :param dbeta: a step size in inverse temperature
+        :return: None
+        """
+        # alias
+        omega = self.omega_next
+
+        # RK2
+        k1 = self.rhs(omega)
+        k2 = self.rhs(omega + 0.5 * dbeta * k1)
+
+        omega += dbeta * k2
+
+        # Enforce sparsity on omega
+        indx = np.abs(omega) < self.tol
+        omega[indx] = 0
+
+        # Update rho and the energy
+        rho = omega.conj().T @ omega
+        self.energy_next = np.sum(rho.conj() * self.A)
+
+    def single_step_rk4(self, dbeta):
+        """
+        Propagate self.rho_next by a single step using RK4
+        :param dbeta: a step size in inverse temperature
+        :return: None
+        """
+        # alias
+        omega = self.omega_next
+
+        # rk4 approach
+        k1 = self.rhs(omega)
+        k2 = self.rhs(omega + 0.5 * dbeta * k1)
+        k3 = self.rhs(omega + 0.5 * dbeta * k2)
+        k4 = self.rhs(omega + dbeta * k3)
+
+        omega += (1 / 6) * dbeta * (k1 + 2 * k2 + 2 * k3 + k4)
+
+        # Enforce sparsity on omega
+        indx = np.abs(omega) < self.tol
+        omega[indx] = 0
+
+        # Update rho and the energy
+        rho = omega.conj().T @ omega
+        self.energy_next = np.sum(rho.conj() * self.A)
+
+    def single_step_predictor_corrector(self, dbeta):
+        """
+        Propagate self.omega_next by a single step using predictor corrector method
+        :param dbeta: a step size of inverse temperature
+        :return:
+        """
+        # alias
+        omega = self.omega_next
+
+        # Calculate first step using euler approximation
+        k1 = self.rhs(omega)
+        eta = omega.copy() + dbeta*k1
+
+        # Calculate next part
+        l1 = self.rhs(eta) + k1
+
+        # Update omega
+        omega += dbeta / 2 * l1
+
+        # Enforce sparsity
+        indx = np.abs(omega) < self.tol
+        omega[indx] = 0
+
+        # Update rho and the energy
+        rho = omega.conj().T @ omega
+        self.energy_next = np.sum(rho.conj() * self.A)
+
 
     def single_step_propagation(self, dbeta):
         """
@@ -94,6 +172,8 @@ class CAdaptive_GC_RK4_sqrt(CAdaptiveDMMsqrt):
         k2 = self.rhs(omega + 0.5 * dbeta * k1)
 
         omega += dbeta * k2
+        indx = np.abs(omega) < self.tol
+        omega[indx] = 0
         #"""
         rho = omega.conj().T @ omega
         self.energy_next = np.trace(rho @ self.inv_ovlp @ self.H)

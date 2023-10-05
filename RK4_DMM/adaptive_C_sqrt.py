@@ -24,13 +24,9 @@ class CAdaptive_C_RK4_sqrt(CAdaptiveDMMsqrt):
         # Save arguments
         self.ovlp = ovlp
         self.H = H
-        self.num_electrons = num_electrons
 
         # Sqrt of overlap matrix
         self.sqrt_ovlp = linalg.sqrtm(self.ovlp)
-
-        # Initialize mu at beta = 0
-        self.mu = H.trace() / ovlp.trace()
 
         # Inverse overlap matrix
         self.inv_ovlp = linalg.inv(ovlp)
@@ -42,14 +38,14 @@ class CAdaptive_C_RK4_sqrt(CAdaptiveDMMsqrt):
         self.identity = np.identity(H.shape[0])
 
         # Calculate coefficient: 2 * num_electrons / trace(ovlp)
-        self.coeff = np.sqrt(2 * num_electrons / ovlp.trace())
+        self.coeff = np.sqrt(num_electrons / self.identity.trace())
 
         # We use inv_S @ H so often, we'll just define it here
         self.A = self.inv_ovlp @ self.H
 
         # Create initial density matrix
         if rho is None:
-            self.rho = self.coeff ** 2 * ovlp / 2
+            self.rho = self.coeff ** 2 * self.ovlp / 2
         else:
             self.rho = rho
 
@@ -58,6 +54,11 @@ class CAdaptive_C_RK4_sqrt(CAdaptiveDMMsqrt):
         else:
             self.omega = omega
 
+        # Initialize mu at beta = 0
+        #self.mu = H.trace() / ovlp.trace()
+        self.mu = np.trace(self.inv_ovlp @ self.H) / np.trace(self.identity)
+
+        self.num_electrons = 2*np.trace(self.ovlp @ self.rho)
         self.omega = self.omega.astype(complex)
 
         assert np.allclose(self.rho, self.omega.conj().T @ self.omega)
@@ -65,7 +66,7 @@ class CAdaptive_C_RK4_sqrt(CAdaptiveDMMsqrt):
         # Call parent constructor on remanining kwargs
         CAdaptiveDMMsqrt.__init__(self, **kwargs)
 
-    def rhs(self, omega):
+    def rhs(self, beta, omega, mu):
         """
         Right hand side of the derivative expression for propagating rho
         :param omega: the sqrt of density matrix
@@ -75,26 +76,114 @@ class CAdaptive_C_RK4_sqrt(CAdaptiveDMMsqrt):
         # Need to update value of mu and dmu/dbeta
         # Numerator: a
         B = self.inv_sqrt_ovlp @ omega
-        x = omega @ (self.identity - B @ B / self.coeff ** 2)
+        x = omega @ (self.identity - B @ B)
         C = x @ self.A
+        D = C @ self.inv_ovlp
+        E = x @ self.inv_ovlp
 
-        num = np.sum(C.conj() * omega) + np.sum(omega.conj() * C)
-        den = np.sum(x.conj() * omega) + np.sum(omega.conj() * x)
+        #num = np.sum(D.conj() * omega) + np.sum(omega.conj() * D)
+        num = np.trace(omega.conj().T @ D + D.conj().T @ omega)
+        #den = np.sum(E.conj() * omega) + np.sum(omega.conj() * E)
+        den = np.trace(omega.conj().T @ E + E.conj().T @ omega)
 
         # Calculate dmu/dbeta
-        if self.beta == 0:
+        if beta == 0:
             dmu = 0
         else:
-            dmu = (num / den - self.mu) / self.beta
+            dmu = 0*(num / den - mu) / (beta)
 
         domega = -0.5 * (C - x * num / den)
 
-        indx = np.abs(domega) < self.tol
-        domega[indx] = 0
+        #indx = np.abs(domega) < self.tol
+        #domega[indx] = 0
 
-        self.sparsity.append(np.sum(indx) / self.H.shape[0] ** 2)
+        #self.sparsity.append(np.sum(indx) / self.H.shape[0] ** 2)
         self.count += 1
         return domega, dmu
+
+    def single_step_rk2(self, dbeta):
+        """
+        Propagate self.rho_next by a single step using RK4
+        :param dbeta: a step size in inverse temperature
+        :return: None
+        """
+        # alias
+        omega = self.omega_next
+        mu = self.mu_next
+
+        # RK2
+        k1, l1 = self.rhs(self.beta, omega, mu)
+        k2, l2 = self.rhs(self.beta + 0.5 * dbeta, omega + 0.5 * dbeta * k1, mu + 0.5 * dbeta * l1)
+
+        omega += dbeta * k2
+        self.mu_next += dbeta * l2
+
+        # Update rho and the energy
+        rho = omega.conj().T @ omega
+        self.energy_next = (self.inv_ovlp @ self.H @ self.inv_ovlp @ rho.conj()).trace()
+
+        temp = k1
+        trace_arg = temp.conj().T @ self.omega
+        trace_arg += trace_arg.conj().T
+        self.cv_next = -2*(self.beta + self.dbeta) ** 2 * np.trace(self.inv_ovlp @ trace_arg @ self.A)
+
+    def single_step_rk4(self, dbeta):
+        """
+        Propagate self.rho_next by a single step using RK4
+        :param dbeta: a step size in inverse temperature
+        :return: None
+        """
+        # alias
+        omega = self.omega_next
+        mu = self.mu_next
+
+        k1, l1 = self.rhs(self.beta, omega, mu)
+
+        k2, l2 = self.rhs(self.beta + 0.5 * dbeta, omega + 0.5 * dbeta * k1, mu + 0.5 * dbeta * l1)
+
+        k3, l3 = self.rhs(self.beta + 0.5 * dbeta, omega + 0.5 * dbeta * k2, mu + 0.5 * dbeta * l2)
+
+        k4, l4 = self.rhs(self.beta + dbeta, omega + dbeta * k3, mu + dbeta * l3)
+
+        omega += (1 / 6) * dbeta * (k1 + 2 * k2 + 2 * k3 + k4)
+        self.mu_next += (1 / 6) * dbeta * (l1 + 2 * l2 + 2 * l3 + l4)
+
+        # Update rho and the energy
+        rho = omega.conj().T @ omega
+        self.energy_next = np.sum(rho.conj() * self.A)
+        temp = k1
+        trace_arg = temp.conj().T @ self.omega
+        trace_arg += trace_arg.conj().T
+        self.cv_next = -(self.beta+self.dbeta) ** 2 * np.sum(trace_arg.conj() * self.A)
+
+    def single_step_predictor_corrector(self, dbeta):
+        """
+        Propagate self.omega_next by a single step using predictor corrector method
+        :param dbeta: a step size of inverse temperature
+        :return:
+        """
+        # alias
+        omega = self.omega_next
+        mu = self.mu
+
+        # Calculate first step using euler approximation
+        k1, l1 = self.rhs(omega)
+        eta = omega.copy() + dbeta * k1
+
+        # Calculate next part
+        k2, l2 = self.rhs(eta)
+
+        # Update omega
+        omega += dbeta / 2 * (k1 + k2)
+        self.mu += dbeta / 2 * (l1 + l2)
+
+        # Enforce sparsity
+        indx = np.abs(omega) < self.tol
+        omega[indx] = 0
+
+        # Update rho and the energy
+        rho = omega.conj().T @ omega
+        self.energy_next = np.sum(rho.conj() * self.A)
 
     def single_step_propagation(self, dbeta):
         """
@@ -124,6 +213,8 @@ class CAdaptive_C_RK4_sqrt(CAdaptiveDMMsqrt):
         k2, l2 = self.rhs(omega + 0.5 * dbeta * k1)
 
         omega += dbeta * k2
+        indx = np.abs(omega) < self.tol
+        omega[indx] = 0
         self.mu += dbeta * l2
         #"""
         rho = omega.conj().T @ omega

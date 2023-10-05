@@ -29,7 +29,7 @@ class CAdaptiveDMMsqrt():
     Child classes must implement tge method single_step_propagation(self, dbeta),
     where a method for the single step propagation is implemented.
     """
-    def __init__(self, *, dbeta, beta=0, epsilon=1e-2, tol=1e-2):
+    def __init__(self, *, dbeta, beta=0, epsilon=1e-2, tol=0):
         """
         :param dbeta:    initial step size of inverse temperature
         :param beta:     initial value of inverse temperature
@@ -42,7 +42,8 @@ class CAdaptiveDMMsqrt():
 
         # Set element tolerance for enforcing sparsity
         self.tol = tol
-        self.sparsity = []
+        self.sparsity = np.sum(np.isclose(self.omega, 0)) / self.omega.shape[0] ** 2
+        self.sparsity_list = [self.sparsity]
 
         # the relative change estimators for the time adaptive scheme
         self.e_n = self.e_n_1 = self.e_n_2 = 0
@@ -54,12 +55,13 @@ class CAdaptiveDMMsqrt():
 
         # copy of the density matrix sqrt
         self.omega_next = np.empty_like(self.omega)
+        self.mu_next = 0
 
         # Store variables to be tracked as system propagates
-        self.energy = np.trace(self.rho @ self.inv_ovlp @ self.H)
+        self.energy = np.trace(self.inv_ovlp @ self.H @ self.rho)
         self.energy_vals = [self.energy, ]
         self.eigenvalues = [np.linalg.eigvalsh(self.rho)]
-        self.num_electron_list = [self.num_electrons]
+        self.num_electron_list = [2 * np.trace(self.inv_ovlp @ self.rho)]
         self.mu_list = [self.mu]
         self.dmu = 0
         self.cv = []
@@ -68,7 +70,7 @@ class CAdaptiveDMMsqrt():
         # Counter for counting number of steps
         self.count = 0
 
-    def propagate(self, beta_final):
+    def propagate(self, beta_final, ss_fun):
         """
         Inverse temperature propagation of the density matrix saved in self.rho
         :param beta_final: until what beta to propagate the rho
@@ -81,6 +83,7 @@ class CAdaptiveDMMsqrt():
 
         # copy the initial condition into the propagation array self.rho_next
         np.copyto(self.omega_next, self.omega)
+        self.mu_next = self.mu
 
         while self.beta < beta_final:
 
@@ -91,10 +94,17 @@ class CAdaptiveDMMsqrt():
             ############################################################################################################
 
             # propagate the rho by a single dbeta
-            self.single_step_propagation(self.dbeta)
+
+            # Set dbeta for the last step to end on beta_final
+            if self.beta + self.dbeta > beta_final:
+                self.dbeta = beta_final - self.beta
+
+            #self.single_step_propagation(self.dbeta)
+            ss_fun(self.dbeta)
             #temp = self.q_next.conj().T @ self.q_next
             #temp2 = self.q.conj().T @ self.q
             #e_n = relative_diff(temp, temp2)
+
             e_n = relative_diff(self.omega_next, self.omega)
 
             while e_n > self.epsilon:
@@ -103,28 +113,32 @@ class CAdaptiveDMMsqrt():
                 self.dbeta *= self.epsilon / e_n
 
                 np.copyto(self.omega_next, self.omega)
-                self.single_step_propagation(self.dbeta)
+                self.mu_next = self.mu
+                #self.single_step_propagation(self.dbeta)
+                ss_fun(self.dbeta)
                 e_n = relative_diff(self.omega_next, self.omega)
 
             # if the energy is increasing stop and only keep last iteration
-            if self.energy_next > self.energy:
-                print("Energy_next > energy")
-                break
-            print("=========================")
+            #if self.energy_next > self.energy:
+            #    print("Energy_next > energy")
+            #    break
+            #print("=========================")
 
             # Accept new value of omega and update tracked variables
             np.copyto(self.omega, self.omega_next)
+            self.mu = self.mu_next
             self.rho = self.omega.conj().T @ self.omega
             self.energy = self.energy_next
             self.energy_vals.append(self.energy)
-            self.num_electron_list.append(self.rho.trace())
+            self.num_electron_list.append(2*(self.ovlp @ self.rho).trace())
             self.mu += self.dmu
             self.mu_list.append(self.mu)
             self.cv.append(self.cv_next)
 
             # Calculate sparsity of accepted rho
-            #indx = np.abs(self.rho) < self.tol
-            #self.sparsity.append(np.sum(indx) / self.rho.shape[0] ** 2)
+            indx = np.abs(self.rho) < self.tol
+            self.sparsity = np.sum(indx) / self.rho.shape[0] ** 2
+            self.sparsity_list.append(self.sparsity)
 
             # save self.dbeta for monitoring purpose
             self.beta_increments.append(self.dbeta)
@@ -216,7 +230,7 @@ class CAdaptiveDMMsqrt():
             self.rho = self.omega.conj().T @ self.omega
             self.energy = self.energy_next
             self.energy_vals.append(self.energy)
-            self.num_electron_list.append(self.rho.trace())
+            self.num_electron_list.append(2 * (self.inv_ovlp @ self.rho).trace())
             self.mu += self.dmu
             self.mu_list.append(self.mu)
             self.cv.append(self.cv_next)
@@ -259,5 +273,31 @@ class CAdaptiveDMMsqrt():
         self.e_n = e_n
         self.e_n_1 = e_n_1
         self.e_n_2 = e_n_2
+
+        return self.omega
+
+    def nonadapt_propagate(self, beta_final, ss_fun):
+        np.copyto(self.omega_next, self.omega)
+
+        while self.beta < beta_final:
+            ss_fun(self.dbeta)
+            np.copyto(self.omega, self.omega_next)
+            self.rho = self.omega.conj().T @ self.omega
+            self.energy = self.energy_next
+            self.energy_vals.append(self.energy)
+            self.num_electron_list.append(self.rho.trace())
+            self.mu += self.dmu
+            self.mu_list.append(self.mu)
+            self.cv.append(self.cv_next)
+
+            # Calculate sparsity of accepted rho
+            indx = np.isclose(self.omega, 0)
+            self.sparsity.append(np.sum(indx) / self.rho.shape[0] ** 2)
+
+            # save self.dbeta for monitoring purpose
+            self.beta_increments.append(self.dbeta)
+
+            # increment time
+            self.beta += self.dbeta
 
         return self.omega

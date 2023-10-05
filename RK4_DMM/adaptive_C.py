@@ -53,11 +53,11 @@ class CAdaptive_C_RK4(CAdaptiveDMM):
         """
         # Need to update value of mu and dmu/dbeta
         # Numerator: a
-        a = rho @ (self.identity - self.inv_ovlp @ rho / self.coeff) @ self.inv_ovlp @ self.H
+        a = rho @ (self.identity - self.inv_ovlp @ rho / 1) @ self.inv_ovlp @ self.H
         a += a.conj().T
 
         # Denominator: b
-        b = rho @ (self.identity - self.inv_ovlp @ rho / self.coeff)
+        b = rho @ (self.identity - self.inv_ovlp @ rho / 1)
         b += b.conj().T
 
         # Calculate dmu/dbeta
@@ -68,7 +68,7 @@ class CAdaptive_C_RK4(CAdaptiveDMM):
 
         scaledH = -0.5 * (self.inv_ovlp @ self.H - a.trace() / b.trace() * self.identity)
 
-        k = rho @ (self.identity - self.inv_ovlp @ rho / self.coeff) @ scaledH
+        k = rho @ (self.identity - self.inv_ovlp @ rho / 1) @ scaledH
 
         return k + k.conj().T, dmu
 

@@ -101,10 +101,10 @@ class CAdaptiveDMM(object):
                 #print(e_n)
 
             # accept the current density matrix
-            if self.energy_next > self.energy:
-                print("Energy_next > energy")
-                break
-            print("=========================")
+            #if self.energy_next > self.energy:
+            #    print("Energy_next > energy")
+            #    break
+            #print("=========================")
 
             np.copyto(self.rho, self.rho_next)
             self.energy = self.energy_next
